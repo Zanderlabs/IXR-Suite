@@ -3,7 +3,7 @@ import tkinter.font as tkFont
 from tkinter import *
 from tkinter import  Button, Canvas, Entry, Frame, Label, LabelFrame, Scrollbar, StringVar, Text, ttk
 import sys
-import z_flow
+import z_flow_separateThread
 import threading
 
 class Z_suite():
@@ -282,9 +282,9 @@ class Z_suite():
         print('Connecting!')
         print('----------------------------------')
         
-        x = threading.Thread(target=z_flow.connect, args=(boardid, timeout, calib_length, power_length, scale, center, headStrength, record), daemon=True)
+        x = threading.Thread(target=z_flow_separateThread.connect, args=(boardid, timeout, calib_length, power_length, scale, center, headStrength, record))
         x.start()
-        
+
         
 # class to define message boxes for labels
 class ToolTip(object):
