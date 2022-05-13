@@ -364,37 +364,28 @@ class Graph:
 
 
 def change_color(ip, port, value):
-    s = socket.socket()
-    s.connect((ip, port))
-    s.send((
-                   str(255 * value) + "," +
-                   str(255 * value) + "," +
-                   str(255 * value) + "," +
-                   str(255 * value)).encode())
-    s.close()
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    data = (str(255 * value) + "," + str(255 * value) + "," + str(255 * value) + "," + str(255 * value)).encode()
+    client.sendto(data, (ip, port))
 
 
 def thread_event(board_shim):
     ip = socket.gethostbyname(socket.gethostname())
     port = 1760
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((ip, port))
-    s.listen(5)
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server.bind((ip, port))
 
     while True:
-        info, addr = s.accept()
-        data = info.recv(1024)
-        message = data.decode('utf-8')
-        # print('receive info:' + message)
-        # print("receive info time.time(): %f " % time.time())
+        info, addr = server.recvfrom(1024)
+        data = info.decode('utf-8')
+        print('receive info:' + data)
 
-        value = float(message)
-        # print(value)
+        value = float(data)
         board_shim.insert_marker(value)
-        # print("insert marker time.time(): %f " % time.time())
+        print("insert marker time.time(): %f " % time.time())
         diff = (time.time() - value) * 1000
         print("time delay_ms: %f " % diff)
-        logging.log(logging.DEBUG, "marker")
 
 
 def main():
