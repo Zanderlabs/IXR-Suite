@@ -1,0 +1,9 @@
+import csv
+import numpy as np
+
+with open("braindata.tsv") as file:
+    tsv_file = csv.reader(file, delimiter="\t")
+    print('time delay:')
+    for line in tsv_file:
+        if (np.float(line[15])) > 0:
+            print((np.float(line[14])-np.float(line[15]))*1000)
