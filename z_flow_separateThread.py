@@ -436,9 +436,9 @@ def main():
     board_shim.start_stream(450000, args.streamer_params)
 
     thread1 = threading.Thread(target=Graph,
-                               args=(board_shim, calib_length, power_length, scale, offset, head_impact))
+                               args=(board_shim, calib_length, power_length, scale, offset, head_impact), daemon=True)
     thread1.start()
-    thread2 = threading.Thread(target=thread_event, args=(board_shim,))
+    thread2 = threading.Thread(target=thread_event, args=(board_shim,), daemon=True)
     thread2.start()
 
 
@@ -459,9 +459,9 @@ def connect(board_id, timeout, calib_length, power_length, scale, offset, head_i
     board_shim.start_stream(450000, streamparams)
 
     thread1 = threading.Thread(target=Graph,
-                               args=(board_shim, calib_length, power_length, scale, offset, head_impact))
+                               args=(board_shim, calib_length, power_length, scale, offset, head_impact), daemon=True)
     thread1.start()
-    thread2 = threading.Thread(target=thread_event, args=(board_shim,))
+    thread2 = threading.Thread(target=thread_event, args=(board_shim,), daemon=True)
     thread2.start()
 
 

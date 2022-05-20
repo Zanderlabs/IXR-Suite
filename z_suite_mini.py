@@ -282,7 +282,7 @@ class Z_suite():
         print('Connecting!')
         print('----------------------------------')
         
-        x = threading.Thread(target=z_flow_separateThread.connect, args=(boardid, timeout, calib_length, power_length, scale, center, headStrength, record))
+        x = threading.Thread(target=z_flow_separateThread.connect, args=(boardid, timeout, calib_length, power_length, scale, center, headStrength, record), daemon=True)
         x.start()
 
         
