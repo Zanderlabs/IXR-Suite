@@ -431,7 +431,7 @@ def main():
     outlet_transmit = StreamOutlet(info_transmit)
 
     thread1 = threading.Thread(target=Graph,
-                               args=(board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit))
+                               args=(board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit), daemon=True)
     thread1.start()
     thread2 = threading.Thread(target=thread_event, daemon=True)
     thread2.start()
@@ -470,7 +470,7 @@ def connect(board_id, timeout, calib_length, power_length, scale, offset, head_i
     outlet_transmit = StreamOutlet(info_transmit)
 
     thread1 = threading.Thread(target=Graph,
-                               args=(board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit))
+                               args=(board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit), daemon=True)
     thread1.start()
     thread2 = threading.Thread(target=thread_event, daemon=True)
     thread2.start()
