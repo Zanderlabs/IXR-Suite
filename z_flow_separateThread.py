@@ -19,9 +19,11 @@ import time
 import socket
 import threading
 
+from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_byprop, local_clock
+
 
 class Graph:
-    def __init__(self, board_shim, calib_length, power_length, scale, offset, head_impact):
+    def __init__(self, board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit):
         pg.setConfigOption('background', '#264653')
         pg.setConfigOption('foreground', '#e9f5db')
 
@@ -56,6 +58,7 @@ class Graph:
         self.brain_scale = scale
         self.brain_center = offset
         self.head_impact = head_impact
+        self.outlet_transmit = outlet_transmit
 
         self.inverse_workload_calib = [0, 1]
         self.inverse_workload_hist = [0, 1]
@@ -335,8 +338,7 @@ class Graph:
             #
             #   self.inverse_workload = inverse_workload_weighted_mean
 
-            self.power_metrics = self.engagement + (1 - head_movement) * self.head_impact
-
+            self.power_metrics = np.float32(self.engagement + (1 - head_movement) * self.head_impact)
 
             # power_metrics[3] = self.inverse_workload
 
@@ -355,7 +357,7 @@ class Graph:
             # print(self.power_metrics)
             # print('###################')
 
-            change_color(socket.gethostbyname(socket.gethostname()), 1755, self.power_metrics)
+            self.outlet_transmit.push_sample([self.power_metrics])
 
             self.app.processEvents()
 
@@ -369,23 +371,13 @@ def change_color(ip, port, value):
     client.sendto(data, (ip, port))
 
 
-def thread_event(board_shim):
-    ip = socket.gethostbyname(socket.gethostname())
-    port = 1760
-
-    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server.bind((ip, port))
+def thread_event():
+    streams = resolve_byprop("name", "SendMarkersOnClick")
+    inlet = StreamInlet(streams[0])
 
     while True:
-        info, addr = server.recvfrom(1024)
-        data = info.decode('utf-8')
-        print('receive info:' + data)
-
-        value = float(data)
-        board_shim.insert_marker(value)
-        print("insert marker time.time(): %f " % time.time())
-        diff = (time.time() - value) * 1000
-        print("time delay_ms: %f " % diff)
+        sample, timestamp = inlet.pull_sample()
+        print("got %s at time %s" % (sample[0], timestamp))
 
 
 def main():
@@ -435,11 +427,27 @@ def main():
     board_shim.config_board("p61")
     board_shim.start_stream(450000, args.streamer_params)
 
+    info_transmit = StreamInfo('BrainPower', 'EEG', 1, 0, 'float32', 'zflow_transmit_power')
+    outlet_transmit = StreamOutlet(info_transmit)
+
     thread1 = threading.Thread(target=Graph,
-                               args=(board_shim, calib_length, power_length, scale, offset, head_impact))
+                               args=(board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit))
     thread1.start()
-    thread2 = threading.Thread(target=thread_event, args=(board_shim,))
+    thread2 = threading.Thread(target=thread_event, daemon=True)
     thread2.start()
+
+    n_chan = board_shim.get_num_rows(args.board_id)
+    rate = board_shim.get_sampling_rate(args.board_id)
+    info_data = StreamInfo('SendData', '', n_chan, rate, 'float32', 'zflow_SendData')
+    outlet_data = StreamOutlet(info_data)
+    chan_timestamp = board_shim.get_timestamp_channel(args.board_id)
+
+    while True:
+        data = board_shim.get_current_board_data(1)
+        # don't send empty data
+        if len(data[0]) < 1:
+            continue
+        outlet_data.push_sample(data.flatten().tolist(), data[chan_timestamp, 0])
 
 
 def connect(board_id, timeout, calib_length, power_length, scale, offset, head_impact, record):
@@ -458,11 +466,28 @@ def connect(board_id, timeout, calib_length, power_length, scale, offset, head_i
     board_shim.config_board("p61")
     board_shim.start_stream(450000, streamparams)
 
+    info_transmit = StreamInfo('BrainPower', 'EEG', 1, 0, 'float32', 'zflow_transmit_power')
+    outlet_transmit = StreamOutlet(info_transmit)
+
     thread1 = threading.Thread(target=Graph,
-                               args=(board_shim, calib_length, power_length, scale, offset, head_impact))
+                               args=(board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit))
     thread1.start()
-    thread2 = threading.Thread(target=thread_event, args=(board_shim,))
+    thread2 = threading.Thread(target=thread_event, daemon=True)
     thread2.start()
+
+    n_chan = board_shim.get_num_rows(board_id)
+    rate = board_shim.get_sampling_rate(board_id)
+    info_data = StreamInfo('SendData', '', n_chan, rate, 'float32', 'zflow_SendData')
+    outlet_data = StreamOutlet(info_data)
+    chan_timestamp = board_shim.get_timestamp_channel(board_id)
+
+    while True:
+        data = board_shim.get_current_board_data(1)
+        # don't send empty data
+        if len(data[0]) < 1:
+            continue
+        outlet_data.push_sample(data.flatten().tolist(), data[chan_timestamp, 0])
+        time.sleep(0.05)
 
 
 if __name__ == '__main__':

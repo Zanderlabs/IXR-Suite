@@ -61,7 +61,7 @@ class Z_suite():
         self.boardidEnt["font"] = ft
         self.boardidEnt["fg"] = "#264653"
         self.boardidEnt["justify"] = "center"
-        self.boardidEnt.insert(END,'39')
+        self.boardidEnt.insert(END,'38')
         #self.boardidEnt["textvariable"] = self.text_boardid
         self.boardidEnt.place(x=250,y=80,width=70,height=25)
         
@@ -282,7 +282,7 @@ class Z_suite():
         print('Connecting!')
         print('----------------------------------')
         
-        x = threading.Thread(target=z_flow_separateThread.connect, args=(boardid, timeout, calib_length, power_length, scale, center, headStrength, record))
+        x = threading.Thread(target=z_flow_separateThread.connect, args=(boardid, timeout, calib_length, power_length, scale, center, headStrength, record), daemon=True)
         x.start()
 
         
