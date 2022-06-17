@@ -393,10 +393,11 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
     thread2 = threading.Thread(target=thread_event, daemon=True)
     thread2.start()
 
+    print(board_shim.get_board_descr(board_id))
     n_chan = board_shim.get_num_rows(board_id)
     rate = board_shim.get_sampling_rate(board_id)
     info_data = StreamInfo('Z-flow-data', 'EEG', n_chan, rate, 'float32', 'zflow_SendData')
-    channel_names = ["packagenum","TP9","Fp1","Fp2","TP10","accel1","accel2","accel3","gyro1","gyro2","gyro3","timestamp","marker"]
+    channel_names = ["packagenum","TP9","Fp1","Fp2","TP10","accel1","accel2","accel3","gyro1","gyro2","gyro3","ppg1","ppg2","ppg3","timestamp","marker"]
     info_data.desc().append_child_value("manufacturer", "Brainflow")
     chns = info_data.desc().append_child("channels")
     for chan_ix, label in enumerate(channel_names):
