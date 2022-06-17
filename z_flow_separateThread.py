@@ -428,7 +428,7 @@ def main():
     board_shim.start_stream(450000, args.streamer_params)
     # board_shim.start_stream(450000, "file://braindata.tsv:w")
 
-    info_transmit = StreamInfo('BrainPower', 'EEG', 1, 0, 'float32', 'zflow_transmit_power')
+    info_transmit = StreamInfo('BrainPower', 'Z-metric', 1, 0, 'float32', 'zflow_transmit_power')
     outlet_transmit = StreamOutlet(info_transmit)
 
     thread1 = threading.Thread(target=Graph,
@@ -439,7 +439,13 @@ def main():
 
     n_chan = board_shim.get_num_rows(args.board_id)
     rate = board_shim.get_sampling_rate(args.board_id)
-    info_data = StreamInfo('SendData', 'EEG', n_chan, rate, 'float32', 'zflow_SendData')
+    info_data = StreamInfo('Z-flow-data', 'EEG', n_chan, rate, 'float32', 'zflow_SendData')
+    channel_names = ["packagenum","TP9","Fp1","Fp2","TP10","accel1","accel2","accel3","gyro1","gyro2","gyro3","timestamp","marker"]
+    info_data.desc().append_child_value("manufacturer", "Brainflow")
+    chns = info_data.desc().append_child("channels")
+    for chan_ix, label in enumerate(channel_names):
+        ch = chns.append_child("channel")
+        ch.append_child_value("label", label)
     outlet_data = StreamOutlet(info_data)
     chan_timestamp = board_shim.get_timestamp_channel(args.board_id)
 
@@ -504,9 +510,3 @@ def connect(board_id, timeout, calib_length, power_length, scale, offset, head_i
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
