@@ -426,6 +426,7 @@ def main():
     board_shim.prepare_session()
     board_shim.config_board("p61")
     board_shim.start_stream(450000, args.streamer_params)
+    # board_shim.start_stream(450000, "file://braindata.tsv:w")
 
     info_transmit = StreamInfo('BrainPower', 'EEG', 1, 0, 'float32', 'zflow_transmit_power')
     outlet_transmit = StreamOutlet(info_transmit)
@@ -438,16 +439,23 @@ def main():
 
     n_chan = board_shim.get_num_rows(args.board_id)
     rate = board_shim.get_sampling_rate(args.board_id)
-    info_data = StreamInfo('SendData', '', n_chan, rate, 'float32', 'zflow_SendData')
+    info_data = StreamInfo('SendData', 'EEG', n_chan, rate, 'float32', 'zflow_SendData')
     outlet_data = StreamOutlet(info_data)
     chan_timestamp = board_shim.get_timestamp_channel(args.board_id)
 
+    old_sample = []
     while True:
-        data = board_shim.get_current_board_data(1)
+        data = board_shim.get_current_board_data(1).flatten().tolist()
+        # print(data)
         # don't send empty data
-        if len(data[0]) < 1:
+        if len(data) < 1:
             continue
-        outlet_data.push_sample(data.flatten().tolist(), data[chan_timestamp, 0])
+
+        if data == old_sample:
+            continue
+        else:
+            old_sample = data
+            outlet_data.push_sample(data, data[chan_timestamp])
 
 
 def connect(board_id, timeout, calib_length, power_length, scale, offset, head_impact, record):
@@ -481,14 +489,18 @@ def connect(board_id, timeout, calib_length, power_length, scale, offset, head_i
     outlet_data = StreamOutlet(info_data)
     chan_timestamp = board_shim.get_timestamp_channel(board_id)
 
+    old_sample = []
     while True:
-        data = board_shim.get_current_board_data(1)
+        data = board_shim.get_current_board_data(1).flatten().tolist()
         # don't send empty data
-        if len(data[0]) < 1:
+        if len(data) < 1:
             continue
-        outlet_data.push_sample(data.flatten().tolist(), data[chan_timestamp, 0])
-        time.sleep(0.05)
 
+        if data == old_sample:
+            continue
+        else:
+            old_sample = data
+            outlet_data.push_sample(data, data[chan_timestamp])
 
 if __name__ == '__main__':
     main()
