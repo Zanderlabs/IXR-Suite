@@ -23,7 +23,7 @@ from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_byprop, local_c
 
 
 class Graph:
-    def __init__(self, board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit):
+    def __init__(self, board_shim, calib_length, power_length, scale, offset, head_impact):
         pg.setConfigOption('background', '#264653')
         pg.setConfigOption('foreground', '#e9f5db')
 
@@ -58,7 +58,6 @@ class Graph:
         self.brain_scale = scale
         self.brain_center = offset
         self.head_impact = head_impact
-        self.outlet_transmit = outlet_transmit
 
         self.inverse_workload_calib = [0, 1]
         self.inverse_workload_hist = [0, 1]
@@ -67,6 +66,10 @@ class Graph:
         self.engagement_hist = [0, 1]
         self.engagement = 0
         self.power_metrics = 0
+
+        # LSL stream
+        info_transmit = StreamInfo('BrainPower', 'Z-metric', 1, 0, 'float32', 'zflow_transmit_power')
+        self.outlet_transmit = StreamOutlet(info_transmit)
 
         # start GUI
         self.app = QtGui.QApplication([])
@@ -379,6 +382,42 @@ def thread_event():
         sample, timestamp = inlet.pull_sample()
         print("got %s at time %s" % (sample[0], timestamp))
 
+def start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact):
+    board_shim = BoardShim(board_id, params)
+    board_shim.prepare_session()
+    board_shim.config_board("p61")
+    board_shim.start_stream(450000, streamparams)
+
+    thread1 = threading.Thread(target=Graph,args=(board_shim, calib_length, power_length, scale, offset, head_impact), daemon=True)
+    thread1.start()
+    thread2 = threading.Thread(target=thread_event, daemon=True)
+    thread2.start()
+
+    n_chan = board_shim.get_num_rows(board_id)
+    rate = board_shim.get_sampling_rate(board_id)
+    info_data = StreamInfo('Z-flow-data', 'EEG', n_chan, rate, 'float32', 'zflow_SendData')
+    channel_names = ["packagenum","TP9","Fp1","Fp2","TP10","accel1","accel2","accel3","gyro1","gyro2","gyro3","timestamp","marker"]
+    info_data.desc().append_child_value("manufacturer", "Brainflow")
+    chns = info_data.desc().append_child("channels")
+    for chan_ix, label in enumerate(channel_names):
+        ch = chns.append_child("channel")
+        ch.append_child_value("label", label)
+    outlet_data = StreamOutlet(info_data)
+    chan_timestamp = board_shim.get_timestamp_channel(board_id)
+
+    previous_timestamp = 0
+    while True:
+        data = board_shim.get_current_board_data(256).T
+        batch_size = data.shape[0]
+        for i in range(batch_size):
+            sample = data[i, :].tolist()
+            current_timestamp = sample[chan_timestamp]
+            if current_timestamp > previous_timestamp:
+                previous_timestamp = current_timestamp
+                outlet_data.push_sample(sample, sample[chan_timestamp])
+            else:
+                continue
+        time.sleep(0.01)
 
 def main():
     BoardShim.enable_dev_board_logger()
@@ -422,45 +461,10 @@ def main():
     offset = 0.5
     head_impact = 0.2
 
-    board_shim = BoardShim(args.board_id, params)
-    board_shim.prepare_session()
-    board_shim.config_board("p61")
-    board_shim.start_stream(450000, args.streamer_params)
-    # board_shim.start_stream(450000, "file://braindata.tsv:w")
+    board_id = args.board_id
+    streamparams = args.streamer_params
 
-    info_transmit = StreamInfo('BrainPower', 'Z-metric', 1, 0, 'float32', 'zflow_transmit_power')
-    outlet_transmit = StreamOutlet(info_transmit)
-
-    thread1 = threading.Thread(target=Graph,
-                               args=(board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit), daemon=True)
-    thread1.start()
-    thread2 = threading.Thread(target=thread_event, daemon=True)
-    thread2.start()
-
-    n_chan = board_shim.get_num_rows(args.board_id)
-    rate = board_shim.get_sampling_rate(args.board_id)
-    info_data = StreamInfo('Z-flow-data', 'EEG', n_chan, rate, 'float32', 'zflow_SendData')
-    channel_names = ["packagenum","TP9","Fp1","Fp2","TP10","accel1","accel2","accel3","gyro1","gyro2","gyro3","timestamp","marker"]
-    info_data.desc().append_child_value("manufacturer", "Brainflow")
-    chns = info_data.desc().append_child("channels")
-    for chan_ix, label in enumerate(channel_names):
-        ch = chns.append_child("channel")
-        ch.append_child_value("label", label)
-    outlet_data = StreamOutlet(info_data)
-    chan_timestamp = board_shim.get_timestamp_channel(args.board_id)
-
-    previous_timestamp = 0
-    while True:
-        data = board_shim.get_current_board_data(256).T
-        batch_size = data.shape[0]
-        for i in range(batch_size):
-            sample = data[i, :].tolist()
-            current_timestamp = sample[chan_timestamp]
-            if current_timestamp > previous_timestamp:
-                previous_timestamp = current_timestamp
-                outlet_data.push_sample(sample, sample[chan_timestamp])
-            else:
-                continue
+    start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact)
 
 
 def connect(board_id, timeout, calib_length, power_length, scale, offset, head_impact, record):
@@ -474,38 +478,8 @@ def connect(board_id, timeout, calib_length, power_length, scale, offset, head_i
     else:
         streamparams = ""
 
-    board_shim = BoardShim(board_id, params)
-    board_shim.prepare_session()
-    board_shim.config_board("p61")
-    board_shim.start_stream(450000, streamparams)
+    start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact)
 
-    info_transmit = StreamInfo('BrainPower', 'EEG', 1, 0, 'float32', 'zflow_transmit_power')
-    outlet_transmit = StreamOutlet(info_transmit)
-
-    thread1 = threading.Thread(target=Graph,
-                               args=(board_shim, calib_length, power_length, scale, offset, head_impact, outlet_transmit), daemon=True)
-    thread1.start()
-    thread2 = threading.Thread(target=thread_event, daemon=True)
-    thread2.start()
-
-    n_chan = board_shim.get_num_rows(board_id)
-    rate = board_shim.get_sampling_rate(board_id)
-    info_data = StreamInfo('SendData', '', n_chan, rate, 'float32', 'zflow_SendData')
-    outlet_data = StreamOutlet(info_data)
-    chan_timestamp = board_shim.get_timestamp_channel(board_id)
-
-    previous_timestamp = 0
-    while True:
-        data = board_shim.get_current_board_data(256).T
-        batch_size = data.shape[0]
-        for i in range(batch_size):
-            sample = data[i, :].tolist()
-            current_timestamp = sample[chan_timestamp]
-            if current_timestamp > previous_timestamp:
-                previous_timestamp = current_timestamp
-                outlet_data.push_sample(sample, sample[chan_timestamp])
-            else:
-                continue
 
 
 if __name__ == '__main__':
