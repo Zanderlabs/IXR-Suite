@@ -449,19 +449,18 @@ def main():
     outlet_data = StreamOutlet(info_data)
     chan_timestamp = board_shim.get_timestamp_channel(args.board_id)
 
-    old_sample = []
+    previous_timestamp = 0
     while True:
-        data = board_shim.get_current_board_data(1).flatten().tolist()
-        # print(data)
-        # don't send empty data
-        if len(data) < 1:
-            continue
-
-        if data == old_sample:
-            continue
-        else:
-            old_sample = data
-            outlet_data.push_sample(data, data[chan_timestamp])
+        data = board_shim.get_current_board_data(256).T
+        batch_size = data.shape[0]
+        for i in range(batch_size):
+            sample = data[i, :].tolist()
+            current_timestamp = sample[chan_timestamp]
+            if current_timestamp > previous_timestamp:
+                previous_timestamp = current_timestamp
+                outlet_data.push_sample(sample, sample[chan_timestamp])
+            else:
+                continue
 
 
 def connect(board_id, timeout, calib_length, power_length, scale, offset, head_impact, record):
@@ -495,18 +494,19 @@ def connect(board_id, timeout, calib_length, power_length, scale, offset, head_i
     outlet_data = StreamOutlet(info_data)
     chan_timestamp = board_shim.get_timestamp_channel(board_id)
 
-    old_sample = []
+    previous_timestamp = 0
     while True:
-        data = board_shim.get_current_board_data(1).flatten().tolist()
-        # don't send empty data
-        if len(data) < 1:
-            continue
+        data = board_shim.get_current_board_data(256).T
+        batch_size = data.shape[0]
+        for i in range(batch_size):
+            sample = data[i, :].tolist()
+            current_timestamp = sample[chan_timestamp]
+            if current_timestamp > previous_timestamp:
+                previous_timestamp = current_timestamp
+                outlet_data.push_sample(sample, sample[chan_timestamp])
+            else:
+                continue
 
-        if data == old_sample:
-            continue
-        else:
-            old_sample = data
-            outlet_data.push_sample(data, data[chan_timestamp])
 
 if __name__ == '__main__':
     main()
