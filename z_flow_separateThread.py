@@ -16,8 +16,8 @@ from brainflow.ml_model import MLModel, BrainFlowMetrics, BrainFlowClassifiers, 
 from brainflow.exit_codes import *
 
 import time
-import socket
 import threading
+import queue
 
 from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_byprop, local_clock
 
@@ -368,19 +368,76 @@ class Graph:
             print('Could not get powers during update!')
 
 
-def change_color(ip, port, value):
-    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    data = (str(255 * value) + "," + str(255 * value) + "," + str(255 * value) + "," + str(255 * value)).encode()
-    client.sendto(data, (ip, port))
+def collect_features(board_shim, board_id):
+    collected_data = []
+    max_sample_num = 1000  # max samples used for feature extracting
+    previous_timestamp = 0
+    chan_timestamp = board_shim.get_timestamp_channel(board_id)
+
+    while len(collected_data) < max_sample_num:
+        data = board_shim.get_current_board_data(256).T
+        batch_size = data.shape[0]
+        for i in range(batch_size):
+            sample = data[i, :].tolist()
+            current_timestamp = sample[chan_timestamp]
+            if current_timestamp > previous_timestamp:
+                previous_timestamp = current_timestamp
+                collected_data.append(sample)
+            else:
+                continue
+    n_win = 20
+    win_len = int(max_sample_num/n_win)
+    chan_for_feature = [1, 2, 3, 4]
+    collected_data = np.array(collected_data)[:max_sample_num, chan_for_feature]  # select channels for feature extracting
+    collected_data = np.concatenate(collected_data.T)
+    feature_vec = [np.mean(collected_data[k: k+win_len]) for k in range(0, len(collected_data), win_len)]
+
+    return feature_vec
 
 
-def thread_event():
+def train_LDA(feature_list, label_list):
+    X = np.array(feature_list).T  # features*samples
+    y = np.array(label_list)
+    mu1 = np.mean(X[:, y == 1], axis=1)
+    mu0 = np.mean(X[:, y == 0], axis=1)
+    # center features to estimate covariance
+    Xpool = np.concatenate((X[:, y == 1]-mu1[:, np.newaxis], X[:, y == 0]-mu0[:, np.newaxis]), axis=1)
+    C = np.cov(Xpool)
+    w = np.linalg.pinv(C).dot(mu1-mu0)
+    b = w.T.dot((mu1 + mu0) / 2)
+    print(w,b)
+    return w, b
+
+
+def thread_event(board_shim, board_id):
     streams = resolve_byprop("name", "SendMarkersOnClick")
     inlet = StreamInlet(streams[0])
+    feature_list = []
+    label_list = []
+    w_lda = [0]
+    bias_lda = 0
 
     while True:
-        sample, timestamp = inlet.pull_sample()
-        print("got %s at time %s" % (sample[0], timestamp))
+        event_sample, event_timestamp = inlet.pull_sample()
+        print("got %s at time %s" % (event_sample[0], event_timestamp))
+        message_list = event_sample[0].split(';')
+        if message_list[0] == 'collect':
+            feature_vec = collect_features(board_shim, board_id)
+            feature_list.append(feature_vec)
+            label_list.append(int(message_list[2]))
+        if message_list[0] == 'train':
+            if len(label_list) < 5:
+                print('too few samples, please collect more!')
+            else:
+                w_lda, bias_lda = train_LDA(feature_list, label_list)
+        if message_list[0] == 'predict':
+            if bias_lda == 0:
+                print('no classifier found, please train classifier first!')
+            else:
+                sample_to_predict = np.array(collect_features(board_shim, board_id)).T
+                result = w_lda.T.dot(sample_to_predict) - bias_lda
+                print(result, message_list[2])
+
 
 def start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact):
     board_shim = BoardShim(board_id, params)
@@ -388,9 +445,9 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
     board_shim.config_board("p61")
     board_shim.start_stream(450000, streamparams)
 
-    thread1 = threading.Thread(target=Graph,args=(board_shim, calib_length, power_length, scale, offset, head_impact), daemon=True)
+    thread1 = threading.Thread(target=Graph, args=(board_shim, calib_length, power_length, scale, offset, head_impact), daemon=True)
     thread1.start()
-    thread2 = threading.Thread(target=thread_event, daemon=True)
+    thread2 = threading.Thread(target=thread_event, args=(board_shim, board_id), daemon=True)
     thread2.start()
 
     print(board_shim.get_board_descr(board_id))
@@ -419,6 +476,7 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
             else:
                 continue
         time.sleep(0.01)
+
 
 def main():
     BoardShim.enable_dev_board_logger()
