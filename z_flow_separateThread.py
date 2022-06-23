@@ -9,16 +9,13 @@ import sys
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
-
 from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds
 from brainflow.data_filter import DataFilter, FilterTypes, WindowFunctions, DetrendOperations
 from brainflow.ml_model import MLModel, BrainFlowMetrics, BrainFlowClassifiers, BrainFlowModelParams
 from brainflow.exit_codes import *
-
 import time
 import threading
-import queue
-
+from sklearn import svm
 from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_byprop, local_clock
 
 
@@ -409,6 +406,14 @@ def train_LDA(feature_list, label_list):
     return w, b
 
 
+def train_SVM(feature_list, label_list):
+    X = np.array(feature_list)  # samples*features
+    y = label_list
+    clf = svm.SVC(probability=True)
+    clf.fit(X, y)
+    return clf
+
+
 def thread_event(board_shim, board_id):
     streams = resolve_byprop("name", "SendMarkersOnClick")
     inlet = StreamInlet(streams[0])
@@ -416,6 +421,7 @@ def thread_event(board_shim, board_id):
     label_list = []
     w_lda = [0]
     bias_lda = 0
+    clf = None
 
     while True:
         event_sample, event_timestamp = inlet.pull_sample()
@@ -428,15 +434,26 @@ def thread_event(board_shim, board_id):
         if message_list[0] == 'train':
             if len(label_list) < 5:
                 print('too few samples, please collect more!')
-            else:
+            elif message_list[2] == 'LDA':
                 w_lda, bias_lda = train_LDA(feature_list, label_list)
-        if message_list[0] == 'predict':
-            if bias_lda == 0:
-                print('no classifier found, please train classifier first!')
             else:
-                sample_to_predict = np.array(collect_features(board_shim, board_id)).T
-                result = w_lda.T.dot(sample_to_predict) - bias_lda
-                print(result, message_list[2])
+                clf = train_SVM(feature_list, label_list)
+        if message_list[0] == 'predict':
+            if message_list[2] == 'LDA':
+                if bias_lda == 0:
+                    print('no LDA-model found, please train classifier first!')
+                else:
+                    sample_to_predict = np.array(collect_features(board_shim, board_id)).T
+                    result = w_lda.T.dot(sample_to_predict) - bias_lda
+                    print(result, message_list[3])
+            if message_list[2] == 'SVM':
+                if clf is None:
+                    print('no SVM-model found, please train classifier first!')
+                else:
+                    sample_to_predict = np.array(collect_features(board_shim, board_id))
+                    result = clf.predict([sample_to_predict])
+                    prob = clf.predict_proba([sample_to_predict])
+                    print(result, 'probability:', prob)
 
 
 def start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact):
