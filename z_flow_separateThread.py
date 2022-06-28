@@ -365,6 +365,55 @@ class Graph:
             print('Could not get powers during update!')
 
 
+def predict(obj, board_shim, board_id, true_label):
+    obj.predict(board_shim, board_id, true_label)
+
+
+class Classifier:
+    def __init__(self, type, feature_list, label_list):
+        self.type = type
+        self.feature_list = feature_list
+        self.label_list = label_list
+        self.model = None
+
+    def train(self):
+        if self.type == 'LDA':
+            self.model = LDA(self.type, self.feature_list, self.label_list)
+        elif self.type == 'SVM':
+            self.model = SVM(self.type, self.feature_list, self.label_list)
+        else:
+            print("The classifier was: ", self.type, ", but only 'LDA' and 'SVM' are supported")
+
+
+class LDA(Classifier):
+    def __init__(self, type, feature_list, label_list):
+        super().__init__(type, feature_list, label_list)
+
+        self.w, self.b = self.train_model(feature_list, label_list)
+
+    def train_model(self, feature_list, label_list):
+        X = np.array(feature_list).T  # features*samples
+        y = np.array(label_list)
+        mu1 = np.mean(X[:, y == 1], axis=1)
+        mu0 = np.mean(X[:, y == 0], axis=1)
+        # center features to estimate covariance
+        Xpool = np.concatenate((X[:, y == 1] - mu1[:, np.newaxis], X[:, y == 0] - mu0[:, np.newaxis]), axis=1)
+        C = np.cov(Xpool)
+        w = np.linalg.pinv(C).dot(mu1 - mu0)
+        b = w.T.dot((mu1 + mu0) / 2)
+
+        return w, b
+
+    def predict(self, board_shim, board_id, true_label):
+        sample_to_predict = np.array(collect_features(board_shim, board_id)).T
+        result = self.w.T.dot(sample_to_predict) - self.b
+        print(result, true_label)
+
+
+class SVM(Classifier):
+    pass
+
+
 def collect_features(board_shim, board_id):
     collected_data = []
     max_sample_num = 1000  # max samples used for feature extracting
@@ -419,8 +468,6 @@ def thread_event(board_shim, board_id):
     inlet = StreamInlet(streams[0])
     feature_list = []
     label_list = []
-    w_lda = [0]
-    bias_lda = 0
     clf = None
 
     while True:
@@ -434,26 +481,35 @@ def thread_event(board_shim, board_id):
         if message_list[0] == 'train':
             if len(label_list) < 5:
                 print('too few samples, please collect more!')
-            elif message_list[2] == 'LDA':
-                w_lda, bias_lda = train_LDA(feature_list, label_list)
             else:
-                clf = train_SVM(feature_list, label_list)
+                clf = Classifier(message_list[2], feature_list, label_list)
+                clf.train()
+
+            # elif message_list[2] == 'LDA':
+            #     w_lda, bias_lda = train_LDA(feature_list, label_list)
+            # elif message_list[2] == 'SVM':
+            #     clf = train_SVM(feature_list, label_list)
+            # else:
+            #     print("The classifier was: ", message_list[2], ", but only 'LDA' and 'SVM' are supported")
         if message_list[0] == 'predict':
-            if message_list[2] == 'LDA':
-                if bias_lda == 0:
-                    print('no LDA-model found, please train classifier first!')
-                else:
-                    sample_to_predict = np.array(collect_features(board_shim, board_id)).T
-                    result = w_lda.T.dot(sample_to_predict) - bias_lda
-                    print(result, message_list[3])
-            if message_list[2] == 'SVM':
-                if clf is None:
-                    print('no SVM-model found, please train classifier first!')
-                else:
-                    sample_to_predict = np.array(collect_features(board_shim, board_id))
-                    result = clf.predict([sample_to_predict])
-                    prob = clf.predict_proba([sample_to_predict])
-                    print(result, 'probability:', prob)
+            if clf is not None:
+                predict(clf.model, board_shim, board_id, message_list[3])
+
+            # if message_list[2] == 'LDA':
+            #     if bias_lda == 0:
+            #         print('no LDA-model found, please train classifier first!')
+            #     else:
+            #         sample_to_predict = np.array(collect_features(board_shim, board_id)).T
+            #         result = w_lda.T.dot(sample_to_predict) - bias_lda
+            #         print(result, message_list[3])
+            # if message_list[2] == 'SVM':
+            #     if clf is None:
+            #         print('no SVM-model found, please train classifier first!')
+            #     else:
+            #         sample_to_predict = np.array(collect_features(board_shim, board_id))
+            #         result = clf.predict([sample_to_predict])
+            #         prob = clf.predict_proba([sample_to_predict])
+            #         print(result, 'probability:', prob)
 
 
 def start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact):
