@@ -18,6 +18,8 @@ import threading
 from sklearn import svm
 from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_byprop, local_clock
 from abc import ABC, abstractmethod
+import scipy as sp
+import scipy.signal
 
 
 class Graph:
@@ -373,30 +375,85 @@ class ClassifierFactory:
     def __call__(self, *args, **kwargs):
         if self.type == 'LDA':
             return LDA(*args, **kwargs)
-        elif self.type == 'SVM':
-            return SVM(*args, **kwargs)
+        # elif self.type == 'SVM':
+        #     return SVM(*args, **kwargs)
         else:
             raise ValueError("Type not known!")
 
 
 class Classifier(ABC):
-    def __init__(self):
+    def __init__(self, type, interval, filter, method):
         self.model = None
+        self.feature_list = []
+        self.label_list = []
+        self.type = type
+        self.interval = interval
+        self.filter = filter
+        self.method = method
 
     @abstractmethod
     def train(self, feature_list, label_list):
         raise NotImplementedError
 
     @abstractmethod
-    def predict(self, model, board_shim, board_id, true_label):
+    def predict(self, model, board_shim, board_id, event_timestamp):
         raise NotImplementedError
+
+    def collect_sample(self, interval, filter, method, board_shim, board_id, event_timestamp):
+        # fetch data
+        [interval_start, interval_end] = interval.split(',')
+        interval_start = int(interval_start.replace("[", ""))
+        interval_end = int(interval_end.replace("]", ""))
+        fs = board_shim.get_sampling_rate(board_id)
+        num_sample = int(fs*(interval_end-interval_start + 100)/1000)
+        chan_timestamp = board_shim.get_timestamp_channel(board_id)
+        chan_feature = board_shim.get_eeg_channels(board_id)  # here only use EEG
+        time.sleep(interval_end/1000 + 0.1)
+        data = board_shim.get_current_board_data(num_sample).T
+        # calculate the real interval based on timestamp of event
+        interval_real = (data[:, chan_timestamp] - event_timestamp)*1000
+        # print([interval_real[0], interval_real[-1]])
+        data = data[:, chan_feature]  # data for feature extracting
+
+        # filtering
+        if filter == '':
+            pass
+        else:
+            [low, high] = filter.split(',')
+            low = float(low.replace("[", ""))
+            high = float(high.replace("]", ""))
+            # here use butterworth band-pass filter
+            Wn = np.array([low, high]) / fs * 2
+            b, a = sp.signal.butter(5, Wn, btype='bandpass')
+            data = sp.signal.lfilter(b, a, data.T).T
+
+        # use [, -200] to do baseline
+        idx_bl = (interval_real < -200)
+        idx_post = np.logical_and(interval_real > 0, interval_real < interval_end)
+        data = data[idx_post, :] - np.mean(data[idx_bl, :], axis=0)
+        interval_real = interval_real[idx_post]
+
+        # feature extracting
+        if method == '':
+            pass
+        elif method == 'windowed-average-EEG':
+            win_len = 50  # window length in ms
+            n_win = int(interval_end / win_len)
+            feature_vector = []
+            for i in range(n_win):
+                idx_in_win = np.logical_and(interval_real > win_len*i, interval_real < win_len*(i+1))
+                feature_vector.append(np.mean(data[idx_in_win, :], axis=0))
+            feature_vector = np.concatenate(np.squeeze(feature_vector))
+            return feature_vector
+        else:
+            print('wrong keyword for <method>!')
 
 
 class LDA(Classifier):
-    def __init__(self, feature_list, label_list):
-        super().__init__()
-        self.feature_list = feature_list
-        self.label_list = label_list
+    def __init__(self, type, interval, filter, method):
+        super().__init__(type, interval, filter, method)
+        self.feature_list = []
+        self.label_list = []
         self.model = None
 
     def train(self, feature_list, label_list):
@@ -411,91 +468,85 @@ class LDA(Classifier):
         b = w.T.dot((mu1 + mu0) / 2)
         self.model = [w, b]
 
-    def predict(self, model, board_shim, board_id, true_label):
-        sample_to_predict = np.array(collect_features(board_shim, board_id)).T
+    def predict(self, model, board_shim, board_id, event_timestamp):
+        sample_to_predict = np.array(self.collect_sample(self.interval, self.filter, self.method, board_shim, board_id, event_timestamp)).T
         result = model[0].T.dot(sample_to_predict) - model[1]
-        print('prediction result:', result, 'true label:', true_label)
+        print('prediction result:', result)
 
 
-class SVM(Classifier):
-    def __init__(self, feature_list, label_list):
-        super().__init__()
-        self.feature_list = feature_list
-        self.label_list = label_list
-        self.model = None
-
-    def train(self, feature_list, label_list):
-        X = np.array(feature_list)  # samples*features
-        y = label_list
-        clf = svm.SVC(probability=True)
-        clf.fit(X, y)
-        self.model = clf
-
-    def predict(self, model, board_shim, board_id, true_label):
-        sample_to_predict = np.array(collect_features(board_shim, board_id))
-        result = model.predict([sample_to_predict])
-        prob = model.predict_proba([sample_to_predict])
-        print('prediction result:', result, 'probability:', prob, 'true label:', true_label)
-
-
-def collect_features(board_shim, board_id):
-    collected_data = []
-    max_sample_num = 1000  # max samples used for feature extracting
-    previous_timestamp = 0
-    chan_timestamp = board_shim.get_timestamp_channel(board_id)
-
-    while len(collected_data) < max_sample_num:
-        data = board_shim.get_current_board_data(256).T
-        batch_size = data.shape[0]
-        for i in range(batch_size):
-            sample = data[i, :].tolist()
-            current_timestamp = sample[chan_timestamp]
-            if current_timestamp > previous_timestamp:
-                previous_timestamp = current_timestamp
-                collected_data.append(sample)
-            else:
-                continue
-    n_win = 20
-    win_len = int(max_sample_num/n_win)
-    chan_for_feature = [1, 2, 3, 4]
-    collected_data = np.array(collected_data)[:max_sample_num, chan_for_feature]  # select channels for feature extracting
-    collected_data = np.concatenate(collected_data.T)
-    feature_vec = [np.mean(collected_data[k: k+win_len]) for k in range(0, len(collected_data), win_len)]
-
-    return feature_vec
+# class SVM(Classifier):
+#     def __init__(self, feature_list, label_list):
+#         super().__init__()
+#         self.feature_list = feature_list
+#         self.label_list = label_list
+#         self.model = None
+#
+#     def train(self, feature_list, label_list):
+#         X = np.array(feature_list)  # samples*features
+#         y = label_list
+#         clf = svm.SVC(probability=True)
+#         clf.fit(X, y)
+#         self.model = clf
+#
+#     def predict(self, model, board_shim, board_id):
+#         sample_to_predict = np.array(collect_features(board_shim, board_id))
+#         result = model.predict([sample_to_predict])
+#         prob = model.predict_proba([sample_to_predict])
+#         print('prediction result:', result, 'probability:', prob)
 
 
 def thread_event(board_shim, board_id):
     streams = resolve_byprop("name", "SendMarkersOnClick")
     inlet = StreamInlet(streams[0])
-    feature_list = []
-    label_list = []
     dict_clf = {}
 
     while True:
         event_sample, event_timestamp = inlet.pull_sample()
+        diff = time.time() - local_clock()
+        event_timestamp = event_timestamp+diff  # get timestamp with Unix Epoch format
         print("got %s at time %s" % (event_sample[0], event_timestamp))
+
         message_list = event_sample[0].split(';')
+        if message_list[0] == 'create':
+            cf = ClassifierFactory(message_list[2])
+            classifier = cf(message_list[2], message_list[3], message_list[4], message_list[5])
+            dict_clf[message_list[1]] = classifier
+
         if message_list[0] == 'collect':
-            feature_vec = collect_features(board_shim, board_id)
-            feature_list.append(feature_vec)
-            label_list.append(int(message_list[2]))
+            clf_name = message_list[1]
+            if clf_name not in dict_clf:
+                print('no classifier named', clf_name, 'found, please create classifier first!')
+            else:
+                clf = dict_clf[clf_name]
+                clf.feature_list.append(clf.collect_sample(clf.interval, clf.filter, clf.method, board_shim, board_id, event_timestamp))
+                clf.label_list.append(int(message_list[2]))
+                print(np.array(clf.feature_list).shape, clf.label_list)
+
         if message_list[0] == 'train':
-            if len(label_list) < 5:
-                print('too few samples, please collect more!')
+            clf_name = message_list[1]
+            if clf_name not in dict_clf:
+                print('no classifier named', clf_name, 'found, please create classifier first!')
             else:
-                cf = ClassifierFactory(message_list[2])
-                classifier = cf(feature_list, label_list)
-                classifier.train(feature_list, label_list)
-                dict_clf[message_list[1]] = classifier
-                for key, value in dict_clf.items():
-                    print(key, value, vars(value))
+                clf = dict_clf[clf_name]
+                if len(clf.feature_list) < 5:
+                    print('only', len(clf.feature_list), 'samples, please collect more!')
+                else:
+                    clf.train(clf.feature_list, clf.label_list)
+
         if message_list[0] == 'predict':
-            if message_list[1] not in dict_clf:
-                print('no classifier named', message_list[1], 'found, please train classifier first!')
+            clf_name = message_list[1]
+            if clf_name not in dict_clf:
+                print('no classifier named', clf_name, 'found, please create classifier first!')
             else:
-                clf = dict_clf[message_list[1]]
-                clf.predict(clf.model, board_shim, board_id, message_list[2])
+                clf = dict_clf[clf_name]
+                if clf.model is None:
+                    print('no model trained yet, please train a model first!')
+                else:
+                    clf.predict(clf.model, board_shim, board_id, event_timestamp)
+
+        if message_list[0] == 'dictionary':
+            for key, value in dict_clf.items():
+                print(key, value, vars(value))
 
 
 def start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact):
@@ -523,6 +574,8 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
     chan_timestamp = board_shim.get_timestamp_channel(board_id)
 
     previous_timestamp = 0
+    diff = time.time() - local_clock()
+
     while True:
         data = board_shim.get_current_board_data(256).T
         batch_size = data.shape[0]
@@ -531,7 +584,7 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
             current_timestamp = sample[chan_timestamp]
             if current_timestamp > previous_timestamp:
                 previous_timestamp = current_timestamp
-                outlet_data.push_sample(sample, sample[chan_timestamp])
+                outlet_data.push_sample(sample, sample[chan_timestamp]-diff)
             else:
                 continue
         time.sleep(0.01)
