@@ -20,6 +20,7 @@ from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_byprop, local_c
 from abc import ABC, abstractmethod
 import scipy as sp
 import scipy.signal
+from sklearn.model_selection import cross_val_score
 
 
 class Graph:
@@ -375,15 +376,15 @@ class ClassifierFactory:
     def __call__(self, *args, **kwargs):
         if self.type == 'LDA':
             return LDA(*args, **kwargs)
-        # elif self.type == 'SVM':
-        #     return SVM(*args, **kwargs)
+        elif self.type == 'SVM':
+            return SVM(*args, **kwargs)
         else:
             raise ValueError("Type not known!")
 
 
 class Classifier(ABC):
     def __init__(self, type, interval, filter, method):
-        self.model = None
+        self.model = {}
         self.feature_list = []
         self.label_list = []
         self.type = type
@@ -392,14 +393,18 @@ class Classifier(ABC):
         self.method = method
 
     @abstractmethod
-    def train(self, feature_list, label_list):
+    def train(self):
         raise NotImplementedError
 
     @abstractmethod
-    def predict(self, model, board_shim, board_id, event_timestamp):
+    def predict(self, board_shim, board_id, event_timestamp):
         raise NotImplementedError
 
-    def collect_sample(self, interval, filter, method, board_shim, board_id, event_timestamp):
+    def collect_sample(self, board_shim, board_id, event_timestamp):
+        interval = self.interval
+        filter = self.filter
+        method = self.method
+
         # fetch data
         [interval_start, interval_end] = interval.split(',')
         interval_start = int(interval_start.replace("[", ""))
@@ -454,9 +459,43 @@ class LDA(Classifier):
         super().__init__(type, interval, filter, method)
         self.feature_list = []
         self.label_list = []
-        self.model = None
+        self.model = {}
 
-    def train(self, feature_list, label_list):
+    def train(self, cross_val=True, n_folds=5):
+        feature_list = self.feature_list
+        label_list = self.label_list
+        if len(feature_list) < 5:
+            print('only', len(feature_list), 'samples, please collect more!')
+        else:
+            self.model['parameter-w,b'] = self.train_LDA(feature_list, label_list)
+            if cross_val is True:
+                n_sample = len(feature_list)
+                n_in_fold = np.floor(n_sample/n_folds).astype(int)
+                n_sample = n_in_fold * n_folds
+                perm = np.random.permutation(n_sample)
+                acc_test = []
+
+                # cross validation
+                for i_fold in range(n_folds):
+                    # train for each fold
+                    idx_test = perm[i_fold * n_in_fold:(i_fold + 1) * n_in_fold]
+                    idx_train = np.setdiff1d(range(n_sample), idx_test)
+                    feature_list_train = np.array(feature_list)[idx_train].tolist()
+                    label_list_train = np.array(label_list)[idx_train].tolist()
+                    label_list_test = np.array(label_list)[idx_test].tolist()
+                    w, b = self.train_LDA(feature_list_train, label_list_train)
+
+                    # predict and calculate accuracy
+                    prediction = w.T.dot(np.array(feature_list).T) - b
+                    prediction_test = prediction[idx_test]
+                    accuracy_test = (sum(prediction_test[np.array(label_list_test) == 0] < 0) + sum(
+                        prediction_test[np.array(label_list_test) == 1] >= 0)) / len(prediction_test)
+                    acc_test.append(accuracy_test)
+                self.model['cross validation accuracy'] = np.mean(acc_test)
+            else:
+                self.model['cross validation accuracy'] = None
+
+    def train_LDA(self, feature_list, label_list):
         X = np.array(feature_list).T  # features*samples
         y = np.array(label_list)
         mu1 = np.mean(X[:, y == 1], axis=1)
@@ -466,33 +505,51 @@ class LDA(Classifier):
         C = np.cov(Xpool)
         w = np.linalg.pinv(C).dot(mu1 - mu0)
         b = w.T.dot((mu1 + mu0) / 2)
-        self.model = [w, b]
+        return w, b
 
-    def predict(self, model, board_shim, board_id, event_timestamp):
-        sample_to_predict = np.array(self.collect_sample(self.interval, self.filter, self.method, board_shim, board_id, event_timestamp)).T
-        result = model[0].T.dot(sample_to_predict) - model[1]
-        print('prediction result:', result)
+    def predict(self, board_shim, board_id, event_timestamp):
+        if 'parameter-w,b' in self.model.keys():
+            sample_to_predict = np.array(self.collect_sample(board_shim, board_id, event_timestamp)).T
+            w, b = self.model['parameter-w,b']
+            result = w.T.dot(sample_to_predict) - b
+            print('prediction result:', result)
+        else:
+            print('no model trained yet, please train a model first!')
 
 
-# class SVM(Classifier):
-#     def __init__(self, feature_list, label_list):
-#         super().__init__()
-#         self.feature_list = feature_list
-#         self.label_list = label_list
-#         self.model = None
-#
-#     def train(self, feature_list, label_list):
-#         X = np.array(feature_list)  # samples*features
-#         y = label_list
-#         clf = svm.SVC(probability=True)
-#         clf.fit(X, y)
-#         self.model = clf
-#
-#     def predict(self, model, board_shim, board_id):
-#         sample_to_predict = np.array(collect_features(board_shim, board_id))
-#         result = model.predict([sample_to_predict])
-#         prob = model.predict_proba([sample_to_predict])
-#         print('prediction result:', result, 'probability:', prob)
+class SVM(Classifier):
+    def __init__(self, type, interval, filter, method):
+        super().__init__(type, interval, filter, method)
+        self.feature_list = []
+        self.label_list = []
+        self.model = {}
+
+    def train(self, cross_val=True, n_folds=5):
+        feature_list = self.feature_list
+        label_list = self.label_list
+        if len(feature_list) < 5:
+            print('only', len(feature_list), 'samples, please collect more!')
+        else:
+            X = np.array(feature_list)  # samples*features
+            y = label_list
+            clf = svm.SVC(probability=True)
+            clf.fit(X, y)
+            self.model['model'] = clf
+            if cross_val is True:
+                scores = cross_val_score(clf, X, y, cv=n_folds)
+                self.model['cross validation accuracy'] = scores.mean()
+            else:
+                self.model['cross validation accuracy'] = None
+
+    def predict(self, board_shim, board_id, event_timestamp):
+        if 'model' in self.model.keys():
+            sample_to_predict = np.array(self.collect_sample(board_shim, board_id, event_timestamp))
+            clf = self.model['model']
+            result = clf.predict([sample_to_predict])
+            prob = clf.predict_proba([sample_to_predict])
+            print('prediction result:', result, 'probability:', prob)
+        else:
+            print('no model trained yet, please train a model first!')
 
 
 def thread_event(board_shim, board_id):
@@ -518,7 +575,7 @@ def thread_event(board_shim, board_id):
                 print('no classifier named', clf_name, 'found, please create classifier first!')
             else:
                 clf = dict_clf[clf_name]
-                clf.feature_list.append(clf.collect_sample(clf.interval, clf.filter, clf.method, board_shim, board_id, event_timestamp))
+                clf.feature_list.append(clf.collect_sample(board_shim, board_id, event_timestamp))
                 clf.label_list.append(int(message_list[2]))
                 print(np.array(clf.feature_list).shape, clf.label_list)
 
@@ -528,10 +585,7 @@ def thread_event(board_shim, board_id):
                 print('no classifier named', clf_name, 'found, please create classifier first!')
             else:
                 clf = dict_clf[clf_name]
-                if len(clf.feature_list) < 5:
-                    print('only', len(clf.feature_list), 'samples, please collect more!')
-                else:
-                    clf.train(clf.feature_list, clf.label_list)
+                clf.train()
 
         if message_list[0] == 'predict':
             clf_name = message_list[1]
@@ -539,10 +593,7 @@ def thread_event(board_shim, board_id):
                 print('no classifier named', clf_name, 'found, please create classifier first!')
             else:
                 clf = dict_clf[clf_name]
-                if clf.model is None:
-                    print('no model trained yet, please train a model first!')
-                else:
-                    clf.predict(clf.model, board_shim, board_id, event_timestamp)
+                clf.predict(board_shim, board_id, event_timestamp)
 
         if message_list[0] == 'dictionary':
             for key, value in dict_clf.items():
