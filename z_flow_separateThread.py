@@ -21,6 +21,7 @@ from abc import ABC, abstractmethod
 import scipy as sp
 import scipy.signal
 from sklearn.model_selection import cross_val_score
+import asyncio
 
 
 class Graph:
@@ -412,15 +413,17 @@ class Classifier(ABC):
         fs = board_shim.get_sampling_rate(board_id)
         num_sample = int(fs*(interval_end-interval_start + 100)/1000)
         chan_timestamp = board_shim.get_timestamp_channel(board_id)
-        chan_feature = board_shim.get_eeg_channels(board_id)  # here only use EEG
+        chan_eeg = board_shim.get_eeg_channels(board_id)
+        # await asyncio.sleep(interval_end/1000 + 0.1)
         time.sleep(interval_end/1000 + 0.1)
         data = board_shim.get_current_board_data(num_sample).T
         # calculate the real interval based on timestamp of event
         interval_real = (data[:, chan_timestamp] - event_timestamp)*1000
         # print([interval_real[0], interval_real[-1]])
-        data = data[:, chan_feature]  # data for feature extracting
 
-        # filtering
+        # preprocessing for EEG data
+        data_eeg = data[:, chan_eeg]
+        # filtering for EEG data
         if filter == '':
             pass
         else:
@@ -430,24 +433,43 @@ class Classifier(ABC):
             # here use butterworth band-pass filter
             Wn = np.array([low, high]) / fs * 2
             b, a = sp.signal.butter(5, Wn, btype='bandpass')
-            data = sp.signal.lfilter(b, a, data.T).T
+            data_eeg = sp.signal.lfilter(b, a, data_eeg.T).T
 
-        # use [, -200] to do baseline
+        # re-reference EEG data
+        eeg_mean = np.mean(data_eeg, axis=1, keepdims=True)
+        data_eeg = np.hstack([data_eeg, np.zeros((data_eeg.shape[0], 1))])  # add a new channel full of zeros
+        data_eeg = data_eeg - eeg_mean
+
+        # use [, -200] to do baseline for EEG data
         idx_bl = (interval_real < -200)
         idx_post = np.logical_and(interval_real > 0, interval_real < interval_end)
-        data = data[idx_post, :] - np.mean(data[idx_bl, :], axis=0)
+        data_eeg = data_eeg[idx_post, :] - np.mean(data_eeg[idx_bl, :], axis=0)
         interval_real = interval_real[idx_post]
 
         # feature extracting
         if method == '':
             pass
         elif method == 'windowed-average-EEG':
+            data_extract = data_eeg
             win_len = 50  # window length in ms
             n_win = int(interval_end / win_len)
             feature_vector = []
             for i in range(n_win):
                 idx_in_win = np.logical_and(interval_real > win_len*i, interval_real < win_len*(i+1))
-                feature_vector.append(np.mean(data[idx_in_win, :], axis=0))
+                feature_vector.append(np.mean(data_extract[idx_in_win, :], axis=0))
+            feature_vector = np.concatenate(np.squeeze(feature_vector))
+            return feature_vector
+        elif method == 'windowed-average-EEG-motion':
+            chan_motion = board_shim.get_accel_channels(board_id) + board_shim.get_gyro_channels(board_id)
+            data = data[idx_post, :]
+            data_motion = data[:, chan_motion]
+            data_extract = np.concatenate((data_eeg, data_motion), axis=1)
+            win_len = 50  # window length in ms
+            n_win = int(interval_end / win_len)
+            feature_vector = []
+            for i in range(n_win):
+                idx_in_win = np.logical_and(interval_real > win_len*i, interval_real < win_len*(i+1))
+                feature_vector.append(np.mean(data_extract[idx_in_win, :], axis=0))
             feature_vector = np.concatenate(np.squeeze(feature_vector))
             return feature_vector
         else:
@@ -552,52 +574,71 @@ class SVM(Classifier):
             print('no model trained yet, please train a model first!')
 
 
+def message_decode(message, event_timestamp, dict_clf, board_shim, board_id):
+    message_list = message.split(';')
+    if message_list[0] == 'create':
+        cf = ClassifierFactory(message_list[2])
+        classifier = cf(message_list[2], message_list[3], message_list[4], message_list[5])
+        dict_clf[message_list[1]] = classifier
+
+    if message_list[0] == 'collect':
+        clf_name = message_list[1]
+        if clf_name not in dict_clf:
+            print('no classifier named', clf_name, 'found, please create classifier first!')
+        else:
+            clf = dict_clf[clf_name]
+            clf.feature_list.append(clf.collect_sample(board_shim, board_id, event_timestamp))
+            clf.label_list.append(int(message_list[2]))
+            print(np.array(clf.feature_list).shape, clf.label_list)
+
+    if message_list[0] == 'train':
+        clf_name = message_list[1]
+        if clf_name not in dict_clf:
+            print('no classifier named', clf_name, 'found, please create classifier first!')
+        else:
+            clf = dict_clf[clf_name]
+            clf.train()
+
+    if message_list[0] == 'predict':
+        clf_name = message_list[1]
+        if clf_name not in dict_clf:
+            print('no classifier named', clf_name, 'found, please create classifier first!')
+        else:
+            clf = dict_clf[clf_name]
+            clf.predict(board_shim, board_id, event_timestamp)
+
+    if message_list[0] == 'dictionary':
+        str_dict_info = ''
+        for key, value in dict_clf.items():
+            print(vars(value))
+        #     str_clf_info = ''
+        #     for k, v in vars(value).items():
+        #         if not isinstance(v, str):
+        #             if isinstance(v, dict):
+        #                 v = json.dumps(v)
+        #             else:
+        #                 v = " ".join(map(str, v))
+        #         str_clf_info = str_clf_info + k + ': ' + v + ', '
+        #     str_dict_info = str_dict_info + key + ': ' + str_clf_info + ' ###### '
+        # outlet.push_sample([str_dict_info])
+
+
 def thread_event(board_shim, board_id):
+    dict_clf = {}
+    # create LSL stream to receive events
     streams = resolve_byprop("name", "SendMarkersOnClick")
     inlet = StreamInlet(streams[0])
-    dict_clf = {}
+    # create LSL stream to send information printed on console
+    info = StreamInfo('SendPrintInfo', 'Markers', 1, 0, 'string', 'Zflow_SendPrintInfo')
+    outlet = StreamOutlet(info)
 
     while True:
         event_sample, event_timestamp = inlet.pull_sample()
         diff = time.time() - local_clock()
         event_timestamp = event_timestamp+diff  # get timestamp with Unix Epoch format
         print("got %s at time %s" % (event_sample[0], event_timestamp))
-
-        message_list = event_sample[0].split(';')
-        if message_list[0] == 'create':
-            cf = ClassifierFactory(message_list[2])
-            classifier = cf(message_list[2], message_list[3], message_list[4], message_list[5])
-            dict_clf[message_list[1]] = classifier
-
-        if message_list[0] == 'collect':
-            clf_name = message_list[1]
-            if clf_name not in dict_clf:
-                print('no classifier named', clf_name, 'found, please create classifier first!')
-            else:
-                clf = dict_clf[clf_name]
-                clf.feature_list.append(clf.collect_sample(board_shim, board_id, event_timestamp))
-                clf.label_list.append(int(message_list[2]))
-                print(np.array(clf.feature_list).shape, clf.label_list)
-
-        if message_list[0] == 'train':
-            clf_name = message_list[1]
-            if clf_name not in dict_clf:
-                print('no classifier named', clf_name, 'found, please create classifier first!')
-            else:
-                clf = dict_clf[clf_name]
-                clf.train()
-
-        if message_list[0] == 'predict':
-            clf_name = message_list[1]
-            if clf_name not in dict_clf:
-                print('no classifier named', clf_name, 'found, please create classifier first!')
-            else:
-                clf = dict_clf[clf_name]
-                clf.predict(board_shim, board_id, event_timestamp)
-
-        if message_list[0] == 'dictionary':
-            for key, value in dict_clf.items():
-                print(key, value, vars(value))
+        outlet.push_sample(["got %s at time %s" % (event_sample[0], event_timestamp)])
+        message_decode(event_sample[0], event_timestamp, dict_clf, board_shim, board_id)
 
 
 def start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact):
@@ -610,6 +651,7 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
     thread1.start()
     thread2 = threading.Thread(target=thread_event, args=(board_shim, board_id), daemon=True)
     thread2.start()
+    # asyncio.run(thread_event(board_shim, board_id))
 
     print(board_shim.get_board_descr(board_id))
     n_chan = board_shim.get_num_rows(board_id)
