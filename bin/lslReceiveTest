@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from pylsl import StreamInlet, resolve_stream, resolve_byprop
+from pylsl import StreamInlet, resolve_byprop, resolve_stream
 
 
 def main():

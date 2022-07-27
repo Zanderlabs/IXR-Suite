@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 import argparse
+import asyncio
 import logging
 import sys
+import threading
+import time
+from abc import ABC, abstractmethod
+
+import numpy as np
+import pyqtgraph as pg
+import scipy as sp
+import scipy.signal
+from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams
+from brainflow.data_filter import (DataFilter, DetrendOperations, FilterTypes,
+                                   WindowFunctions)
+from brainflow.exit_codes import *
+from brainflow.ml_model import (BrainFlowClassifiers, BrainFlowMetrics,
+                                BrainFlowModelParams, MLModel)
+from pylsl import (StreamInfo, StreamInlet, StreamOutlet, local_clock,
+                   resolve_byprop)
+from pyqtgraph.Qt import QtCore, QtGui
+from sklearn import svm
+from sklearn.model_selection import cross_val_score
+
 # f = open('test_board.log', 'w')
 # sys.stdout = f
 # print("test")
 # f.close()
-
-import numpy as np
-import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore
-from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds
-from brainflow.data_filter import DataFilter, FilterTypes, WindowFunctions, DetrendOperations
-from brainflow.ml_model import MLModel, BrainFlowMetrics, BrainFlowClassifiers, BrainFlowModelParams
-from brainflow.exit_codes import *
-import time
-import threading
-from sklearn import svm
-from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_byprop, local_clock
-from abc import ABC, abstractmethod
-import scipy as sp
-import scipy.signal
-from sklearn.model_selection import cross_val_score
-import asyncio
 
 
 class Graph:
@@ -178,7 +182,6 @@ class Graph:
         ay.setTicks([tickdict.items()])
 
     def _init_brain_power_plot(self):
-
         self.power_plot = self.win.addPlot(row=6, col=1, rowspan=3)
         self.power_plot.setTitle('final brain power')
 
@@ -323,7 +326,7 @@ class Graph:
             #   if len(self.inverse_workload_hist) > self.hist_length:
             #       del self.inverse_workload_hist[0]
             #
-            # #  print('mean: ' + str(np.mean(self.inverse_workload_calib)))
+            #  # print('mean: ' + str(np.mean(self.inverse_workload_calib)))
             #  # print('std: ' + str(np.std(self.inverse_workload_calib)))
             #
             #   # scale
@@ -648,7 +651,8 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
     board_shim.config_board("p61")
     board_shim.start_stream(450000, streamparams)
 
-    thread1 = threading.Thread(target=Graph, args=(board_shim, calib_length, power_length, scale, offset, head_impact), daemon=True)
+    thread1 = threading.Thread(target=Graph, args=(board_shim, calib_length,
+                               power_length, scale, offset, head_impact), daemon=True)
     thread1.start()
     thread2 = threading.Thread(target=thread_event, args=(board_shim, board_id), daemon=True)
     thread2.start()
@@ -658,7 +662,8 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
     n_chan = board_shim.get_num_rows(board_id)
     rate = board_shim.get_sampling_rate(board_id)
     info_data = StreamInfo('Z-flow-data', 'EEG', n_chan, rate, 'float32', 'zflow_SendData')
-    channel_names = ["packagenum","TP9","Fp1","Fp2","TP10","accel1","accel2","accel3","gyro1","gyro2","gyro3","ppg1","ppg2","ppg3","timestamp","marker"]
+    channel_names = ["packagenum", "TP9", "Fp1", "Fp2", "TP10", "accel1", "accel2",
+                     "accel3", "gyro1", "gyro2", "gyro3", "ppg1", "ppg2", "ppg3", "timestamp", "marker"]
     info_data.desc().append_child_value("manufacturer", "Brainflow")
     chns = info_data.desc().append_child("channels")
     for chan_ix, label in enumerate(channel_names):
@@ -744,7 +749,6 @@ def connect(board_id, timeout, calib_length, power_length, scale, offset, head_i
         streamparams = ""
 
     start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact)
-
 
 
 if __name__ == '__main__':
