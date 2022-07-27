@@ -11,9 +11,9 @@ import numpy as np
 import pyqtgraph as pg
 import scipy as sp
 import scipy.signal
-from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams
+from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams, BrainFlowPresets
 from brainflow.data_filter import (DataFilter, DetrendOperations, FilterTypes,
-                                   WindowFunctions)
+                                   WindowOperations)
 from brainflow.exit_codes import *
 from brainflow.ml_model import (BrainFlowClassifiers, BrainFlowMetrics,
                                 BrainFlowModelParams, MLModel)
@@ -36,17 +36,25 @@ class Graph:
 
         self.board_id = board_shim.get_board_id()
         self.board_shim = board_shim
-        self.eeg_channels = BoardShim.get_eeg_channels(self.board_id)
-        self.ppg_channels = BoardShim.get_ppg_channels(self.board_id)
-        # print(BoardShim.get_board_descr(self.board_id))
-        self.gyro_channels = BoardShim.get_gyro_channels(self.board_id)
-        self.timestamp_channel = BoardShim.get_timestamp_channel(self.board_id)
-        self.sampling_rate = BoardShim.get_sampling_rate(self.board_id)
+
+        # print("\nEEG preset data format", BoardShim.get_board_descr(
+        #     board_id=self.board_id, preset=BrainFlowPresets.DEFAULT_PRESET))
+        # print("\nGyro/Aux preset data format",
+        #       BoardShim.get_board_descr(board_id=self.board_id, preset=BrainFlowPresets.AUXILIARY_PRESET))
+        # print("\nPPG/Anc preset data format", BoardShim.get_board_descr(board_id=self.board_id,
+        #       preset=BrainFlowPresets.ANCILLARY_PRESET))
+
+        self.eeg_channels = BoardShim.get_eeg_channels(self.board_id, BrainFlowPresets.DEFAULT_PRESET)
+        self.gyro_channels = BoardShim.get_gyro_channels(self.board_id, BrainFlowPresets.AUXILIARY_PRESET)
+        self.ppg_channels = BoardShim.get_ppg_channels(self.board_id, BrainFlowPresets.ANCILLARY_PRESET)
+        self.eeg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, BrainFlowPresets.DEFAULT_PRESET)
+        self.gyro_sampling_rate = BoardShim.get_sampling_rate(self.board_id, BrainFlowPresets.AUXILIARY_PRESET)
+        self.ppg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, BrainFlowPresets.ANCILLARY_PRESET)
         self.update_speed_ms = 100
         self.window_size_plot = 7
         self.window_size_compute = 1.5
-        self.num_points_plot = self.window_size_plot * self.sampling_rate
-        self.num_points_compute = int(self.window_size_compute * self.sampling_rate)
+        self.num_points_plot = self.window_size_plot * self.eeg_sampling_rate
+        self.num_points_compute = int(self.window_size_compute * self.eeg_sampling_rate)
 
         self.timestamp_old = 0
 
@@ -157,7 +165,7 @@ class Graph:
         self.psd_plot.setLabel('bottom', 'frequency (Hz)')
         self.psd_plot.setXRange(0, 50, padding=0)
         self.psd_curves = list()
-        self.psd_size = DataFilter.get_nearest_power_of_two(self.sampling_rate)
+        self.psd_size = DataFilter.get_nearest_power_of_two(self.eeg_sampling_rate)
         for i in range(len(self.eeg_channels)):
             psd_curve = self.psd_plot.plot(pen=self.pens[i % len(self.pens)])
             psd_curve.setDownsampling(auto=True, method='mean', ds=3)
@@ -201,177 +209,179 @@ class Graph:
         ay.setTicks([tickdict.items()])
 
     def update(self):
-        try:
-            data = self.board_shim.get_current_board_data(self.num_points_compute)
-            data_plot = self.board_shim.get_current_board_data(self.num_points_plot)
+        # collect EEG data
+        eeg_data = self.board_shim.get_current_board_data(
+            self.num_points_compute, BrainFlowPresets.DEFAULT_PRESET)[self.eeg_channels, :]
+        eeg_data_plot = self.board_shim.get_current_board_data(
+            self.num_points_plot, BrainFlowPresets.DEFAULT_PRESET)[self.eeg_channels, :]
 
-            # re-reference
-            eeg_data_plot = data_plot[self.eeg_channels, :]
-            eeg_data_plot_mean = np.mean(eeg_data_plot, axis=0)
-            eeg_data_plot = eeg_data_plot - eeg_data_plot_mean
-            data_plot[self.eeg_channels, :] = eeg_data_plot
+        # collect gyro data
+        gyro_data = self.board_shim.get_current_board_data(
+            self.num_points_compute, BrainFlowPresets.AUXILIARY_PRESET)[self.gyro_channels, :]
+        gyro_data_plot = self.board_shim.get_current_board_data(
+            self.num_points_plot, BrainFlowPresets.AUXILIARY_PRESET)[self.gyro_channels, :]
 
-            eeg_data = data[self.eeg_channels, :]
-            eeg_data_mean = np.mean(eeg_data, axis=0)
-            eeg_data = eeg_data - eeg_data_mean
-            data[self.eeg_channels, :] = eeg_data
+        # collect ppg data
+        # - please mind we are picking the first ppg channel only out of 3,
+        #   which is channel 1 (zero-indexed) of the entire array.
+        # - only plot data is required for PPG at current implementation
+        ppg_data_plot = self.board_shim.get_current_board_data(
+            self.num_points_plot, BrainFlowPresets.ANCILLARY_PRESET)[self.ppg_channels[0], :]
 
-            #  power_metrics = [0,0,0,0]
+        # mean normalize
+        eeg_data = eeg_data - np.mean(eeg_data, axis=0)
+        eeg_data_plot = eeg_data_plot - np.mean(eeg_data_plot, axis=0)
+        gyro_data = gyro_data - np.mean(gyro_data, axis=0)
+        gyro_data_plot = gyro_data_plot - np.mean(gyro_data_plot, axis=0)
+        # ppg_data = ppg_data - np.mean(ppg_data, axis=0)
+        ppg_data_plot = ppg_data_plot - np.mean(ppg_data_plot, axis=0)
 
-            # movement
-            for count, channel in enumerate(self.gyro_channels):
-                # plot timeseries
-                self.curves[count + len(self.eeg_channels)].setData(data_plot[channel].tolist())
+        #  power_metrics = [0,0,0,0]
 
-            head_movement = np.clip(np.mean(np.abs(data[self.gyro_channels])) / 50, 0, 1)
-            #  power_metrics[2] = head_movement
+        # add gyro data to curves, leave first few curves for eeg data.
+        for count, _ in enumerate(self.gyro_channels):
+            self.curves[len(self.eeg_channels) + count].setData(gyro_data_plot[count].tolist())
+        head_movement = np.clip(np.mean(np.abs(gyro_data)) / 50, 0, 1)
+        #  power_metrics[2] = head_movement
 
-            # heart
-            channel = self.ppg_channels[0]
-            DataFilter.detrend(data_plot[channel], DetrendOperations.CONSTANT.value)
-            DataFilter.perform_highpass(data_plot[channel], BoardShim.get_sampling_rate(self.board_id), 1.0, 4,
-                                        FilterTypes.BUTTERWORTH.value, 0)
-            DataFilter.perform_lowpass(data_plot[channel], BoardShim.get_sampling_rate(self.board_id), 40.0, 5,
-                                       FilterTypes.CHEBYSHEV_TYPE_1.value, 1)
-            self.curves[len(self.eeg_channels) + len(self.gyro_channels)].setData(data_plot[channel].tolist())
+        # ppg: filter and add ppg to curves, again at the appropriate index.
+        DataFilter.detrend(ppg_data_plot, DetrendOperations.CONSTANT.value)
+        DataFilter.perform_bandpass(data=ppg_data_plot, sampling_rate=self.ppg_sampling_rate, start_freq=0.8,
+                                    stop_freq=4.0, order=4, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
+        self.curves[eeg_data_plot.shape[0] + gyro_data_plot.shape[0]].setData(ppg_data_plot.tolist())
 
-            # eeg processing
-            avg_bands = [0, 0, 0, 0, 0]
-            frontal_theta = 1
-            parietal_alpha = 1
-            engagement_idx = 1
+        # eeg processing
+        avg_bands = [0, 0, 0, 0, 0]
+        frontal_theta = 1
+        parietal_alpha = 1
+        engagement_idx = 1
 
-            for count, channel in enumerate(self.eeg_channels):
-                # prepare
+        for count, _ in enumerate(self.eeg_channels):
+            DataFilter.detrend(eeg_data[count], DetrendOperations.CONSTANT.value)
+            DataFilter.perform_bandpass(data=eeg_data[count], sampling_rate=self.eeg_sampling_rate, start_freq=1.0,
+                                        stop_freq=59.0, order=2, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
+            DataFilter.perform_bandstop(data=eeg_data[count], sampling_rate=self.eeg_sampling_rate, start_freq=48.0,
+                                        stop_freq=52.0, order=2, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
+            # preprocess plot
+            DataFilter.detrend(eeg_data_plot[count], DetrendOperations.CONSTANT.value)
+            DataFilter.perform_bandpass(data=eeg_data_plot[count], sampling_rate=self.eeg_sampling_rate, start_freq=2.0,
+                                        stop_freq=58.0, order=2, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
+            DataFilter.perform_bandstop(data=eeg_data_plot[count], sampling_rate=self.eeg_sampling_rate, start_freq=48.0,
+                                        stop_freq=52.0, order=2, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
+            # plot timeseries
+            self.curves[count].setData(eeg_data_plot[count].tolist())
+            if len(eeg_data[count]) > self.psd_size:
+                # compute psd
+                psd_data = DataFilter.get_psd_welch(data=eeg_data[count], nfft=self.psd_size, overlap=self.psd_size // 2,
+                                                    sampling_rate=self.eeg_sampling_rate, window=WindowOperations.BLACKMAN_HARRIS.value)
+                lim = min(48, len(psd_data[0]))
+                self.psd_curves[count].setData(psd_data[1][0:lim].tolist(), psd_data[0][0:lim].tolist())
+                # compute bands
+                delta = DataFilter.get_band_power(psd_data, 1.0, 4.0)
+                theta = DataFilter.get_band_power(psd_data, 4.0, 8.0)
+                alpha = DataFilter.get_band_power(psd_data, 8.0, 13.0)
+                beta = DataFilter.get_band_power(psd_data, 13.0, 30.0)
+                gamma = DataFilter.get_band_power(psd_data, 30.0, 60.0)
+                avg_bands[0] = avg_bands[0] + delta
+                avg_bands[1] = avg_bands[1] + theta
+                avg_bands[2] = avg_bands[2] + alpha
+                avg_bands[3] = avg_bands[3] + beta
+                avg_bands[4] = avg_bands[4] + gamma
 
-                DataFilter.detrend(data[channel], DetrendOperations.CONSTANT.value)
-                DataFilter.perform_bandpass(data[channel], self.sampling_rate, 30.0, 58.0, 2,
-                                            FilterTypes.BUTTERWORTH.value, 0)
-                DataFilter.perform_bandstop(data[channel], self.sampling_rate, 50.0, 4.0, 2,
-                                            FilterTypes.BUTTERWORTH.value, 0)
-                # preprocess plot
-                DataFilter.detrend(data_plot[channel], DetrendOperations.CONSTANT.value)
-                DataFilter.perform_bandpass(data_plot[channel], self.sampling_rate, 30.0, 56.0, 2,
-                                            FilterTypes.BUTTERWORTH.value, 0)
-                DataFilter.perform_bandstop(data_plot[channel], self.sampling_rate, 50.0, 4.0, 2,
-                                            FilterTypes.BUTTERWORTH.value, 0)
-                # plot timeseries
-                self.curves[count].setData(data_plot[channel].tolist())
-                if data.shape[1] > self.psd_size:
-                    # compute psd
-                    psd_data = DataFilter.get_psd_welch(data[channel], self.psd_size, self.psd_size // 2,
-                                                        self.sampling_rate, WindowFunctions.BLACKMAN_HARRIS.value)
-                    lim = min(48, len(psd_data[0]))
-                    self.psd_curves[count].setData(psd_data[1][0:lim].tolist(), psd_data[0][0:lim].tolist())
-                    # compute bands
-                    delta = DataFilter.get_band_power(psd_data, 1.0, 4.0)
-                    theta = DataFilter.get_band_power(psd_data, 4.0, 8.0)
-                    alpha = DataFilter.get_band_power(psd_data, 8.0, 13.0)
-                    beta = DataFilter.get_band_power(psd_data, 13.0, 30.0)
-                    gamma = DataFilter.get_band_power(psd_data, 30.0, 60.0)
-                    avg_bands[0] = avg_bands[0] + delta
-                    avg_bands[1] = avg_bands[1] + theta
-                    avg_bands[2] = avg_bands[2] + alpha
-                    avg_bands[3] = avg_bands[3] + beta
-                    avg_bands[4] = avg_bands[4] + gamma
+                # compute selfmade brain metrics
+                engagement_idx += (beta / (theta + alpha)) / gamma
 
-                    # compute selfmade brain metrics
-                    engagement_idx += (beta / (theta + alpha)) / gamma
+                if count == 1 or count == 4:
+                    parietal_alpha += alpha / gamma
+                else:
+                    frontal_theta += theta / gamma
 
-                    if count == 1 or count == 4:
-                        parietal_alpha += alpha / gamma
-                    else:
-                        frontal_theta += theta / gamma
+        avg_bands = [int(x / len(self.eeg_channels)) for x in avg_bands]  # average bands were just sums
 
-            avg_bands = [int(x / len(self.eeg_channels)) for x in avg_bands]  # average bands were just sums
+        engagement_idx = engagement_idx / 4
+        parietal_alpha = parietal_alpha / 2
+        frontal_theta = frontal_theta / 2
 
-            engagement_idx = engagement_idx / 4
-            parietal_alpha = parietal_alpha / 2
-            frontal_theta = frontal_theta / 2
+        # engagement
+        self.engagement_calib.append(engagement_idx)
+        if len(self.engagement_calib) > self.calib_length:
+            del self.engagement_calib[0]
 
-            # engagement
-            self.engagement_calib.append(engagement_idx)
-            if len(self.engagement_calib) > self.calib_length:
-                del self.engagement_calib[0]
+        if len(self.engagement_hist) > self.hist_length:
+            del self.engagement_hist[0]
 
-            if len(self.engagement_hist) > self.hist_length:
-                del self.engagement_hist[0]
+        # scale
+        engagement_z = (engagement_idx - np.mean(self.engagement_calib)) / np.std(self.engagement_calib)
+        engagement_z /= 2 * self.brain_scale
+        engagement_z += self.brain_center
+        engagement_z = np.clip(engagement_z, 0.05, 1)
+        self.engagement_hist.append(engagement_z)
+        # print(engagement_z)
+        # print(self.engagement_hist)
 
-            # scale
-            engagement_z = (engagement_idx - np.mean(self.engagement_calib)) / np.std(self.engagement_calib)
-            engagement_z /= 2 * self.brain_scale
-            engagement_z += self.brain_center
-            engagement_z = np.clip(engagement_z, 0.05, 1)
-            self.engagement_hist.append(engagement_z)
-            # print(engagement_z)
-            # print(self.engagement_hist)
+        # weighted mean
+        engagement_weighted_mean = 0
+        sumweight = 0
+        for count, hist_val in enumerate(self.engagement_hist):
+            engagement_weighted_mean += hist_val * count
+            sumweight += count
 
-            # weighted mean
-            engagement_weighted_mean = 0
-            sumweight = 0
-            for count, hist_val in enumerate(self.engagement_hist):
-                engagement_weighted_mean += hist_val * count
-                sumweight += count
+        engagement_weighted_mean = engagement_weighted_mean / sumweight
 
-            engagement_weighted_mean = engagement_weighted_mean / sumweight
+        self.engagement = engagement_weighted_mean
 
-            self.engagement = engagement_weighted_mean
+        #   # inverse workload
+        #   inverse_workload_idx = parietal_alpha/frontal_theta
+        #   self.inverse_workload_calib.append(inverse_workload_idx)
+        #   if len(self.inverse_workload_calib) > self.calib_length:
+        #       del self.inverse_workload_calib[0]
+        #
+        #   if len(self.inverse_workload_hist) > self.hist_length:
+        #       del self.inverse_workload_hist[0]
+        #
+        #  # print('mean: ' + str(np.mean(self.inverse_workload_calib)))
+        #  # print('std: ' + str(np.std(self.inverse_workload_calib)))
+        #
+        #   # scale
+        #   inverse_workload_z = (inverse_workload_idx - np.mean(self.inverse_workload_calib)) / np.std(self.inverse_workload_calib)
+        #   inverse_workload_z /= 2*self.brain_scale
+        #   inverse_workload_z += self.brain_center
+        #   inverse_workload_z = np.clip(inverse_workload_z,0.05,1)
+        #   self.inverse_workload_hist.append(inverse_workload_z)
+        #
+        #   # weighted mean
+        #   inverse_workload_weighted_mean = 0
+        #   sumweight = 0
+        #   for count, hist_val in enumerate(self.inverse_workload_hist):
+        #       inverse_workload_weighted_mean += hist_val*count
+        #       sumweight += count
+        #
+        #   inverse_workload_weighted_mean = inverse_workload_weighted_mean / sumweight
+        #
+        #   self.inverse_workload = inverse_workload_weighted_mean
 
-            #   # inverse workload
-            #   inverse_workload_idx = parietal_alpha/frontal_theta
-            #   self.inverse_workload_calib.append(inverse_workload_idx)
-            #   if len(self.inverse_workload_calib) > self.calib_length:
-            #       del self.inverse_workload_calib[0]
-            #
-            #   if len(self.inverse_workload_hist) > self.hist_length:
-            #       del self.inverse_workload_hist[0]
-            #
-            #  # print('mean: ' + str(np.mean(self.inverse_workload_calib)))
-            #  # print('std: ' + str(np.std(self.inverse_workload_calib)))
-            #
-            #   # scale
-            #   inverse_workload_z = (inverse_workload_idx - np.mean(self.inverse_workload_calib)) / np.std(self.inverse_workload_calib)
-            #   inverse_workload_z /= 2*self.brain_scale
-            #   inverse_workload_z += self.brain_center
-            #   inverse_workload_z = np.clip(inverse_workload_z,0.05,1)
-            #   self.inverse_workload_hist.append(inverse_workload_z)
-            #
-            #   # weighted mean
-            #   inverse_workload_weighted_mean = 0
-            #   sumweight = 0
-            #   for count, hist_val in enumerate(self.inverse_workload_hist):
-            #       inverse_workload_weighted_mean += hist_val*count
-            #       sumweight += count
-            #
-            #   inverse_workload_weighted_mean = inverse_workload_weighted_mean / sumweight
-            #
-            #   self.inverse_workload = inverse_workload_weighted_mean
+        self.power_metrics = np.float32(self.engagement + (1 - head_movement) * self.head_impact)
 
-            self.power_metrics = np.float32(self.engagement + (1 - head_movement) * self.head_impact)
+        # power_metrics[3] = self.inverse_workload
 
-            # power_metrics[3] = self.inverse_workload
+        # # ML brain metrics
+        # bands = DataFilter.get_avg_band_powers(eeg_data_plot, self.eeg_channels, self.eeg_sampling_rate, True)
+        # feature_vector = np.concatenate((bands[0], bands[1]))
+        #
+        # power_metrics[0] = self.concentration.predict(feature_vector)
+        #  power_metrics[1] = self.relaxation.predict(feature_vector)
 
-            # # ML brain metrics
-            # bands = DataFilter.get_avg_band_powers(data_plot, self.eeg_channels, self.sampling_rate, True)
-            # feature_vector = np.concatenate((bands[0], bands[1]))
-            #
-            # power_metrics[0] = self.concentration.predict(feature_vector)
-            #  power_metrics[1] = self.relaxation.predict(feature_vector)
+        # plot bars
+        self.band_bar.setOpts(height=avg_bands)
+        self.power_bar.setOpts(height=self.power_metrics)
 
-            # plot bars
-            self.band_bar.setOpts(height=avg_bands)
-            self.power_bar.setOpts(height=self.power_metrics)
+        # print('###################')
+        # print(self.power_metrics)
+        # print('###################')
 
-            # print('###################')
-            # print(self.power_metrics)
-            # print('###################')
+        self.outlet_transmit.push_sample([self.power_metrics])
 
-            self.outlet_transmit.push_sample([self.power_metrics])
-
-            self.app.processEvents()
-
-        except:
-            print('Could not get powers during update!')
+        self.app.processEvents()
 
 
 class ClassifierFactory:
@@ -414,13 +424,13 @@ class Classifier(ABC):
         [interval_start, interval_end] = interval.split(',')
         interval_start = int(interval_start.replace("[", ""))
         interval_end = int(interval_end.replace("]", ""))
-        fs = board_shim.get_sampling_rate(board_id)
+        fs = board_shim.get_sampling_rate(board_id, BrainFlowPresets.DEFAULT_PRESET)
         num_sample = int(fs*(interval_end-interval_start + 100)/1000)
-        chan_timestamp = board_shim.get_timestamp_channel(board_id)
-        chan_eeg = board_shim.get_eeg_channels(board_id)
+        chan_timestamp = board_shim.get_timestamp_channel(board_id, BrainFlowPresets.DEFAULT_PRESET)
+        chan_eeg = board_shim.get_eeg_channels(board_id, BrainFlowPresets.DEFAULT_PRESET)
         # await asyncio.sleep(interval_end/1000 + 0.1)
         time.sleep(interval_end/1000 + 0.1)
-        data = board_shim.get_current_board_data(num_sample).T
+        data = board_shim.get_current_board_data(num_sample, BrainFlowPresets.DEFAULT_PRESET).T
         # calculate the real interval based on timestamp of event
         interval_real = (data[:, chan_timestamp] - event_timestamp)*1000
         # print([interval_real[0], interval_real[-1]])
@@ -659,34 +669,40 @@ def start_all(board_id, params, streamparams, calib_length, power_length, scale,
     # asyncio.run(thread_event(board_shim, board_id))
 
     print(board_shim.get_board_descr(board_id))
-    n_chan = board_shim.get_num_rows(board_id)
-    rate = board_shim.get_sampling_rate(board_id)
-    info_data = StreamInfo('Z-flow-data', 'EEG', n_chan, rate, 'float32', 'zflow_SendData')
-    channel_names = ["packagenum", "TP9", "Fp1", "Fp2", "TP10", "accel1", "accel2",
-                     "accel3", "gyro1", "gyro2", "gyro3", "ppg1", "ppg2", "ppg3", "timestamp", "marker"]
-    info_data.desc().append_child_value("manufacturer", "Brainflow")
-    chns = info_data.desc().append_child("channels")
-    for chan_ix, label in enumerate(channel_names):
-        ch = chns.append_child("channel")
-        ch.append_child_value("label", label)
-    outlet_data = StreamOutlet(info_data)
-    chan_timestamp = board_shim.get_timestamp_channel(board_id)
 
-    previous_timestamp = 0
+    data_types = {
+        'eeg': BrainFlowPresets.DEFAULT_PRESET,
+        'gyro': BrainFlowPresets.AUXILIARY_PRESET,
+        'ppg': BrainFlowPresets.ANCILLARY_PRESET,
+    }
+    outlets = {}
+
+    for data_type, preset in data_types.items():
+        n_chan = board_shim.get_num_rows(board_id, preset)
+        rate = board_shim.get_sampling_rate(board_id, preset)
+        info_data = StreamInfo('Z-flow-data', data_type, n_chan, rate, 'float32', 'zflow_SendData')
+        info_data.desc().append_child_value("manufacturer", "Brainflow")
+        info_data.desc().append_child_value("description", str(
+            BoardShim.get_board_descr(board_id, preset)))
+        outlets[data_type] = StreamOutlet(info_data)
+
+    previous_timestamp = {'eeg': 0, 'gyro': 0, 'ppg': 0}
     diff = time.time() - local_clock()
 
     while True:
-        data = board_shim.get_current_board_data(256).T
-        batch_size = data.shape[0]
-        for i in range(batch_size):
-            sample = data[i, :].tolist()
-            current_timestamp = sample[chan_timestamp]
-            if current_timestamp > previous_timestamp:
-                previous_timestamp = current_timestamp
-                outlet_data.push_sample(sample, sample[chan_timestamp]-diff)
-            else:
-                continue
-        time.sleep(0.01)
+        for data_type, preset in data_types.items():
+            timestamp_column = board_shim.get_timestamp_channel(board_id, preset=preset)
+
+            # TODO: Potential cause for a bug here in the following lines
+            # if (loop/thread) latency is longer then 1024/sample_rate we skip frames of data. This should be resolved.
+            data = board_shim.get_current_board_data(1024, preset)
+            # slice rows with timestamps bigger then previous_timestamp
+            data = data[:, data[timestamp_column] > previous_timestamp[data_type]]
+
+            # only update timestamp and push if there is something left to push.
+            if data.shape[1] > 0:
+                previous_timestamp[data_type] = data[timestamp_column, -1]
+                outlets[data_type].push_chunk(data.tolist(), previous_timestamp[data_type]-diff)
 
 
 def main():
