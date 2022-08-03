@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+from pylsl import StreamInfo, stream_outlet
+
+
+def main():
+    stream = StreamInfo(name="SendMarkersOnClick", type="command", channel_count=1,
+                        nominal_srate=0, channel_format='string', source_id="IsSendTest")
+
+    # create a new inlet to read from the stream
+    outlet = stream_outlet(stream)
+
+    command_dict = {
+        1: "create;workload;LDA;[-400,600];[1,30];windowed-average-EEG",
+        2: "create;relaxation;LDA;[-400,600];[1,30];windowed-average-EEG-motion",
+        3: "create;relaxation;SVM;[-400,600];[8,30];windowed-average-EEG",
+        4: "collect;relaxation;0",
+        5: "collect;relaxation;1",
+        6: "train;relaxation",
+        7: "predict;relaxation"
+    }
+
+    while True:
+        print("\nsend on of the following commands:")
+        for num_command, text in command_dict.items():
+            print(num_command, text)
+        try:
+            input_var = int(input("Command:"))
+            command = command_dict[input_var]
+            print("Sending:", command)
+            outlet.push_sample([command])
+        except (ValueError, KeyError) as e:
+            print("Wrong command, please try again.", e)
+
+
+if __name__ == '__main__':
+    main()
