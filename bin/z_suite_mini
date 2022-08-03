@@ -4,8 +4,14 @@ import tkinter.font as tkFont
 from tkinter import *
 from tkinter import  Button, Canvas, Entry, Frame, Label, LabelFrame, Scrollbar, StringVar, Text, ttk
 import sys
-import z_flow_separateThread
 import threading
+
+# TODO: Once we have refactored most of the scripts functions into appropriate libraries this import bootstrap can be
+#       replaced for a more elegant solution.
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+z_flow_separateThread = module_from_spec(spec_from_loader(
+    "z_flow_separateThread", SourceFileLoader("z_flow_separateThread", "/bin/z_flow_separateThread")))
 
 class Z_suite():
 
