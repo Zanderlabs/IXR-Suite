@@ -1,4 +1,5 @@
-from pylsl import StreamInlet, resolve_stream, resolve_byprop
+#!/usr/bin/env python3
+from pylsl import StreamInlet, resolve_byprop, resolve_stream
 
 
 def main():
@@ -7,7 +8,7 @@ def main():
     # streams = resolve_stream('type', 'EEG')
     # streams = resolve_byprop("name", "Z-flow-data")
     streams = resolve_byprop("name", "BrainPower")
-    
+
     # create a new inlet to read from the stream
     inlet = StreamInlet(streams[0])
 

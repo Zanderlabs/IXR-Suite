@@ -1,19 +1,11 @@
 # Z-suite-mini
-Mini version of the upcoming Zanderlabs software suite to be used primarily in VR applications
 
-## Python packages
+Mini version of the upcoming Zanderlabs software suite to be used primarily in VR applications.
 
-python -m pip install brainflow
+## Python
 
-additional:
+Dependencies can be installed using `requirements.txt`
 
-pyqtgraph
-PyQt5
-
-auto_py_to_exe (for compiling executable)
-
-maybe for later:
-
-mne
-matplotlib
-pandas
+``` shell
+pip install -r requirements.txt
+```
