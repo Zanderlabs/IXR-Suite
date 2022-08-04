@@ -11,8 +11,10 @@ from tkinter import (Button, Canvas, Entry, Frame, Label, LabelFrame,
 
 # TODO: Once we have refactored most of the scripts functions into appropriate libraries this import bootstrap can be
 #       replaced for a more elegant solution.
-z_flow_separateThread = module_from_spec(spec_from_loader(
-    "z_flow_separateThread", SourceFileLoader("z_flow_separateThread", "/bin/z_flow_separateThread")))
+spec = spec_from_loader("z_flow_separateThread", SourceFileLoader("z_flow_separateThread", "bin/z_flow_separateThread"))
+z_flow_separateThread = module_from_spec(spec)
+sys.modules["z_flow_separateThread"] = z_flow_separateThread
+spec.loader.exec_module(z_flow_separateThread)
 
 
 class Z_suite():
