@@ -2,7 +2,7 @@ import time
 from abc import ABC, abstractmethod
 
 import numpy as np
-import scipy as sp
+from scipy import signal
 from brainflow import BrainFlowPresets
 
 
@@ -55,8 +55,8 @@ class Classifier(ABC):
             high = float(high.replace("]", ""))
             # here use butterworth band-pass filter
             Wn = np.array([low, high]) / fs * 2
-            b, a = sp.signal.butter(5, Wn, btype='bandpass')
-            data_eeg = sp.signal.lfilter(b, a, data_eeg.T).T
+            b, a = signal.butter(5, Wn, btype='bandpass')
+            data_eeg = signal.lfilter(b, a, data_eeg.T).T
 
         # re-reference EEG data
         eeg_mean = np.mean(data_eeg, axis=1, keepdims=True)
