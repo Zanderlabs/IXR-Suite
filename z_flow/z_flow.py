@@ -14,8 +14,15 @@ from z_flow.classifiers import Classifier, LDA, SVM
 
 
 class ZFlow:
-    def __init__(args=None) -> None:
-        pass
+    def __init__(self) -> None:
+        self.board_shim = None
+        self.board_id = None
+
+        self.calib_length = 600
+        self.power_length = 10
+        self.scale = 1.5
+        self.offset = 0.5
+        self.head_impact = 0.2
 
     def run(self) -> None:
         BoardShim.enable_dev_board_logger()
@@ -54,20 +61,11 @@ class ZFlow:
         params.timeout = args.timeout
         params.file = args.file
 
-        calib_length = 600
-        power_length = 10
-        scale = 1.5
-        offset = 0.5
-        head_impact = 0.2
+        self._create_board_shim(args.board_id, params, args.streamer_params)
 
-        board_id = args.board_id
-        streamparams = args.streamer_params
+        self.start_all()
 
-        self.start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact)
-
-    @staticmethod
-    def message_decode(message: str, event_timestamp: float, dict_clf: dict, board_shim: BoardShim,
-                       board_id: BoardIds) -> None:
+    def message_decode(self, message: str, event_timestamp: float, dict_clf: dict) -> None:
         message_list = message.split(';')
         if message_list[0] == 'create':
             cf = ClassifierFactory(message_list[2])
@@ -80,7 +78,7 @@ class ZFlow:
                 print('no classifier named', clf_name, 'found, please create classifier first!')
             else:
                 clf = dict_clf[clf_name]
-                clf.feature_list.append(clf.collect_sample(board_shim, board_id, event_timestamp))
+                clf.feature_list.append(clf.collect_sample(self.board_shim, self.board_id, event_timestamp))
                 clf.label_list.append(int(message_list[2]))
                 print(np.array(clf.feature_list).shape, clf.label_list)
 
@@ -98,7 +96,7 @@ class ZFlow:
                 print('no classifier named', clf_name, 'found, please create classifier first!')
             else:
                 clf = dict_clf[clf_name]
-                clf.predict(board_shim, board_id, event_timestamp)
+                clf.predict(self.board_shim, self.board_id, event_timestamp)
 
         if message_list[0] == 'dictionary':
             str_dict_info = ''
@@ -115,7 +113,7 @@ class ZFlow:
             #     str_dict_info = str_dict_info + key + ': ' + str_clf_info + ' ###### '
             # outlet.push_sample([str_dict_info])
 
-    def thread_event(self, board_shim: BoardShim, board_id: BoardIds) -> None:
+    def thread_event(self) -> None:
         dict_clf = {}
         # create LSL stream to receive events
         streams = resolve_byprop("name", "SendMarkersOnClick")
@@ -130,23 +128,17 @@ class ZFlow:
             event_timestamp = event_timestamp+diff  # get timestamp with Unix Epoch format
             print("got %s at time %s" % (event_sample[0], event_timestamp))
             outlet.push_sample(["got %s at time %s" % (event_sample[0], event_timestamp)])
-            self.message_decode(event_sample[0], event_timestamp, dict_clf, board_shim, board_id)
+            self.message_decode(event_sample[0], event_timestamp, dict_clf)
 
-    def start_all(self, board_id: BoardIds, params: BrainFlowInputParams, streamparams: str, calib_length: int,
-                  power_length: int, scale: float, offset: float, head_impact: float) -> None:
-        board_shim = BoardShim(board_id, params)
-        board_shim.prepare_session()
-        board_shim.config_board("p61")
-        board_shim.start_stream(450000, streamparams)
-
-        thread1 = threading.Thread(target=Graph, args=(board_shim, calib_length,
-                                                       power_length, scale, offset, head_impact), daemon=True)
+    def start_all(self) -> None:
+        thread1 = threading.Thread(target=Graph, args=(self.board_shim, self.calib_length,
+                                   self.power_length, self.scale, self.offset, self.head_impact), daemon=True)
         thread1.start()
-        thread2 = threading.Thread(target=self.thread_event, args=(board_shim, board_id), daemon=True)
+        thread2 = threading.Thread(target=self.thread_event, daemon=True)
         thread2.start()
         # asyncio.run(thread_event(board_shim, board_id))
 
-        print(board_shim.get_board_descr(board_id))
+        print(self.board_shim.get_board_descr(self.board_id))
 
         data_types = {
             'eeg': BrainFlowPresets.DEFAULT_PRESET,
@@ -156,12 +148,12 @@ class ZFlow:
         outlets = {}
 
         for data_type, preset in data_types.items():
-            n_chan = board_shim.get_num_rows(board_id, preset)
-            rate = board_shim.get_sampling_rate(board_id, preset)
+            n_chan = self.board_shim.get_num_rows(self.board_id, preset)
+            rate = self.board_shim.get_sampling_rate(self.board_id, preset)
             info_data = StreamInfo('Z-flow-data', data_type, n_chan, rate, 'float32', 'zflow_SendData')
             info_data.desc().append_child_value("manufacturer", "Brainflow")
             info_data.desc().append_child_value("description", str(
-                BoardShim.get_board_descr(board_id, preset)))
+                BoardShim.get_board_descr(self.board_id, preset)))
             outlets[data_type] = StreamOutlet(info_data)
 
         previous_timestamp = {'eeg': 0, 'gyro': 0, 'ppg': 0}
@@ -169,11 +161,11 @@ class ZFlow:
 
         while True:
             for data_type, preset in data_types.items():
-                timestamp_column = board_shim.get_timestamp_channel(board_id, preset=preset)
+                timestamp_column = self.board_shim.get_timestamp_channel(self.board_id, preset=preset)
 
                 # TODO: Potential cause for a bug here in the following lines
                 # if (loop/thread) latency is longer then 1024/sample_rate we skip frames of data. This should be resolved.
-                data = board_shim.get_current_board_data(1024, preset)
+                data = self.board_shim.get_current_board_data(1024, preset)
                 # slice rows with timestamps bigger then previous_timestamp
                 data = data[:, data[timestamp_column] > previous_timestamp[data_type]]
 
@@ -184,6 +176,12 @@ class ZFlow:
 
     def connect(self, board_id: BoardIds, timeout: int, calib_length: int, power_length: int,
                 scale: float, offset: float, head_impact: float, record) -> None:
+        self.calib_length = calib_length
+        self.power_length = power_length
+        self.scale = scale
+        self.offset = offset
+        self.head_impact = head_impact
+
         BoardShim.enable_dev_board_logger()
         logging.basicConfig(level=logging.DEBUG)
         params = BrainFlowInputParams()
@@ -194,7 +192,16 @@ class ZFlow:
         else:
             streamparams = ""
 
-        self.start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact)
+        self._create_board_shim(board_id, params, streamparams)
+
+        self.start_all()
+
+    def _create_board_shim(self, board_id: BoardIds, params: BrainFlowInputParams, streamparams: str) -> None:
+        self.board_id = BoardIds(board_id)
+        self.board_shim = BoardShim(board_id, params)
+        self.board_shim.prepare_session()
+        self.board_shim.config_board("p61")
+        self.board_shim.start_stream(450000, streamparams)
 
 
 class ClassifierFactory:
