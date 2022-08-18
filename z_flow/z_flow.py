@@ -172,7 +172,8 @@ class ZFlow:
                 # only update timestamp and push if there is something left to push.
                 if data.shape[1] > 0:
                     previous_timestamp[data_type] = data[timestamp_column, -1]
-                    outlets[data_type].push_chunk(data.tolist(), previous_timestamp[data_type]-diff)
+                    outlets[data_type].push_chunk(data.T.tolist(), previous_timestamp[data_type]-diff)
+            time.sleep(1)
 
     def connect(self, board_id: BoardIds, timeout: int, calib_length: int, power_length: int,
                 scale: float, offset: float, head_impact: float, record) -> None:
