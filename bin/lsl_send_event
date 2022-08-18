@@ -10,9 +10,9 @@ def main():
     outlet = stream_outlet(stream)
 
     command_dict = {
-        1: "create;workload;LDA;[-400,600];[1,30];windowed-average-EEG",
-        2: "create;relaxation;LDA;[-400,600];[1,30];windowed-average-EEG-motion",
-        3: "create;relaxation;SVM;[-400,600];[8,30];windowed-average-EEG",
+        1: "create;workload;lda;-400,600;1,30;windowed-average-EEG",
+        2: "create;relaxation;lda;-400,600;1,30;windowed-average-EEG-motion",
+        3: "create;relaxation;svm;-400,600;8,30;windowed-average-EEG",
         4: "collect;relaxation;0",
         5: "collect;relaxation;1",
         6: "train;relaxation",
