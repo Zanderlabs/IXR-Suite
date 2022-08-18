@@ -5,3 +5,4 @@ scipy==1.8.1
 pylsl==1.16.0
 scikit_learn==1.1.1
 pandas==1.4.3
+pynput==1.7.6
