@@ -4,13 +4,18 @@ import threading
 import time
 
 import numpy as np
-from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams, BrainFlowPresets
+from brainflow.board_shim import (BoardIds, BoardShim, BrainFlowInputParams,
+                                  BrainFlowPresets)
 from brainflow.exit_codes import *
 from pylsl import (StreamInfo, StreamInlet, StreamOutlet, local_clock,
                    resolve_byprop)
 
+from z_flow.classifiers import Classifier, ClfError
 from z_flow.render import Graph
-from z_flow.classifiers import Classifier, LDA, SVM
+
+
+class DecodeError(Exception):
+    pass
 
 
 class ZFlow:
@@ -23,6 +28,13 @@ class ZFlow:
         self.scale = 1.5
         self.offset = 0.5
         self.head_impact = 0.2
+
+        self.classifiers = {}
+
+    def __del__(self):
+        if self.board_shim is not None:
+            self.board_shim.stop_stream()
+            self.board_shim.release_session()
 
     def run(self) -> None:
         BoardShim.enable_dev_board_logger()
@@ -65,53 +77,43 @@ class ZFlow:
 
         self.start_all()
 
-    def message_decode(self, message: str, event_timestamp: float, dict_clf: dict) -> None:
+    def message_decode(self, message: str, event_timestamp: float) -> str:
+        """Parsers, decodes and executes LSL events passed as `message`.
+        Returns a success notification or raises and DecodeError.
+
+        :param message: LSL event encoded as str.
+        :type message: str
+        :param event_timestamp: The original even timestamp
+        :type event_timestamp: float
+        :raises DecodeError: "Unknown classifier instance, please create one"
+        :raises DecodeError: "Unrecognized task when decoding"
+        :return: Returns success message
+        :rtype: str
+        """
         message_list = message.split(';')
-        if message_list[0] == 'create':
-            cf = ClassifierFactory(message_list[2])
-            classifier = cf(message_list[2], message_list[3], message_list[4], message_list[5])
-            dict_clf[message_list[1]] = classifier
-
-        if message_list[0] == 'collect':
-            clf_name = message_list[1]
-            if clf_name not in dict_clf:
-                print('no classifier named', clf_name, 'found, please create classifier first!')
-            else:
-                clf = dict_clf[clf_name]
-                clf.feature_list.append(clf.collect_sample(self.board_shim, self.board_id, event_timestamp))
-                clf.label_list.append(int(message_list[2]))
-                print(np.array(clf.feature_list).shape, clf.label_list)
-
-        if message_list[0] == 'train':
-            clf_name = message_list[1]
-            if clf_name not in dict_clf:
-                print('no classifier named', clf_name, 'found, please create classifier first!')
-            else:
-                clf = dict_clf[clf_name]
-                clf.train()
-
-        if message_list[0] == 'predict':
-            clf_name = message_list[1]
-            if clf_name not in dict_clf:
-                print('no classifier named', clf_name, 'found, please create classifier first!')
-            else:
-                clf = dict_clf[clf_name]
-                clf.predict(self.board_shim, self.board_id, event_timestamp)
-
-        if message_list[0] == 'dictionary':
-            str_dict_info = ''
-            for key, value in dict_clf.items():
-                print(vars(value))
-            #     str_clf_info = ''
-            #     for k, v in vars(value).items():
-            #         if not isinstance(v, str):
-            #             if isinstance(v, dict):
-            #                 v = json.dumps(v)
-            #             else:
-            #                 v = " ".join(map(str, v))
-            #         str_clf_info = str_clf_info + k + ': ' + v + ', '
-            #     str_dict_info = str_dict_info + key + ': ' + str_clf_info + ' ###### '
-            # outlet.push_sample([str_dict_info])
+        task = message_list.pop(0)
+        name = message_list.pop(0)
+        if task == 'create':
+            model_type = message_list.pop(0)
+            time_range = [int(value) for value in message_list.pop(0).split(',')]
+            filter_freq_cutoff = [float(value) for value in message_list.pop(0).split(',')]
+            method = message_list.pop(0)
+            self.classifiers[name] = Classifier(self.board_shim, model_type, time_range, filter_freq_cutoff, method)
+            return f"Created classifier instance, with name {name}."
+        elif task == 'collect' and name in self.classifiers:
+            label = int(message_list.pop(0))
+            self.classifiers[name].collect_sample(label, event_timestamp)
+            return f"Collected sample with, label: {label}, event timestamp: {event_timestamp}."
+        elif task == 'train' and name in self.classifiers:
+            scores = self.classifiers[name].train()
+            return f"Trained model successfully, with scores: {scores}."
+        elif task == 'predict' and name in self.classifiers:
+            prediction, probabilities = self.classifiers[name].predict(event_timestamp)
+            return f"Prediction: {prediction}, with probabilities: {probabilities}"
+        elif name not in self.classifiers:
+            raise DecodeError("Unknown classifier instance, please create one.")
+        else:
+            raise DecodeError("Unrecognized task when decoding.")
 
     def thread_event(self) -> None:
         dict_clf = {}
@@ -128,7 +130,10 @@ class ZFlow:
             event_timestamp = event_timestamp+diff  # get timestamp with Unix Epoch format
             print("got %s at time %s" % (event_sample[0], event_timestamp))
             outlet.push_sample(["got %s at time %s" % (event_sample[0], event_timestamp)])
-            self.message_decode(event_sample[0], event_timestamp, dict_clf)
+            try:
+                self.message_decode(event_sample[0], event_timestamp)
+            except (DecodeError, ClfError) as e:
+                print(f"Warning: {e} \nStopping thread, please try again.")
 
     def start_all(self) -> None:
         thread1 = threading.Thread(target=Graph, args=(self.board_shim, self.calib_length,
@@ -203,16 +208,3 @@ class ZFlow:
         self.board_shim.prepare_session()
         self.board_shim.config_board("p61")
         self.board_shim.start_stream(450000, streamparams)
-
-
-class ClassifierFactory:
-    def __init__(self, model_type: str) -> None:
-        self.model_type = model_type
-
-    def __call__(self, *args, **kwargs) -> any:
-        if self.model_type == 'LDA':
-            return LDA(*args, **kwargs)
-        elif self.model_type == 'SVM':
-            return SVM(*args, **kwargs)
-        else:
-            raise ValueError("Type not known!")
