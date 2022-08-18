@@ -150,7 +150,7 @@ class ZFlow:
         for data_type, preset in data_types.items():
             n_chan = self.board_shim.get_num_rows(self.board_id, preset)
             rate = self.board_shim.get_sampling_rate(self.board_id, preset)
-            info_data = StreamInfo('Z-flow-data', data_type, n_chan, rate, 'float32', 'zflow_SendData')
+            info_data = StreamInfo(f'z-flow-data-{data_type}', data_type, n_chan, rate, 'float32', 'z-flow-send-data')
             info_data.desc().append_child_value("manufacturer", "Brainflow")
             info_data.desc().append_child_value("description", str(
                 BoardShim.get_board_descr(self.board_id, preset)))
