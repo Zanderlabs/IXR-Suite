@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pyxdf
+from matplotlib import pyplot as plt
+from scipy.fft import fft, fftfreq
+from scipy import signal
+
+XDF_FILENAME = 'exp/sub-P001/ses-S001/eeg/sub-P001_ses-S001_task-Default_run-001_eeg.xdf'
+
+streams, header = pyxdf.load_xdf(XDF_FILENAME)
+
+data = {}
+
+for stream in streams:
+    if stream['info']['name'][0] == 'z-flow-data-eeg':
+        # channels are 1 to 4 (+1 for python indexing)
+        data['eeg'] = pd.DataFrame(stream['time_series'][:, 1:5], index=stream['time_stamps'],
+                                   columns=['TP9', 'Fp1', 'Fp2', 'TP10'])
+        T = 1/stream['info']['effective_srate']
+    if stream['info']['name'][0] == 'z-flow-data-gyro':
+        # channels are 1 to 6 (+1 for python indexing)
+        data['gyro'] = pd.DataFrame(stream['time_series'][:, 1:7], index=stream['time_stamps'], columns=[
+                                    'accel1', 'accel2', 'accel3', 'gyro1', 'gyro2', 'gyro3'])
+    if stream['info']['name'][0] == 'SendMarkersOnClick':
+        data['events'] = stream['time_stamps']
+
+# try to slice excess data away.
+try:
+    start = data['events'][0]-0.5
+    end = data['events'][-1]+0.5
+    data['gyro'] = data['gyro'].loc[(data['gyro'].index > start) & (data['gyro'].index < end)]
+    data['eeg'] = data['eeg'].loc[(data['eeg'].index > start) & (data['eeg'].index < end)]
+except:
+    pass
+
+# build filters
+sos_stop = signal.butter(2, [48.0, 52], btype='bandstop', fs=1/T, output='sos')
+sos_pass = signal.butter(2, [2, 58], btype='bandpass', fs=1/T, output='sos')
+
+# plot fft's
+N = len(data['eeg'])
+num_plots = len(data['eeg'].columns)
+num_plots += 1 if num_plots % 2 != 0 else 0  # make even
+plt.figure()
+for i, column_name in enumerate(data['eeg'].columns):
+    # yf = fft(data['eeg'][column_name].to_numpy())
+    yf = fft(signal.sosfilt(sos_stop, signal.sosfilt(sos_pass, data['eeg'][column_name].to_numpy())))
+    xf = fftfreq(N, T)[:N//2]
+    ax = plt.subplot(num_plots // 2, 2, i+1)
+    ax.set_ylabel(column_name)
+    plt.plot(xf, 2.0/N * np.abs(yf[0:N//2]))
+plt.show(block=False)
+
+# re-reference
+eeg_mean = data['eeg'].mean(axis=1)
+data['eeg']['negative_mean'] = 0.0
+data['eeg'] = data['eeg'].apply(lambda x: x - eeg_mean)
+
+num_plots = len(data['gyro'].columns) + len(data['eeg'].columns)
+num_plots += 1 if num_plots % 2 != 0 else 0  # make even
+
+# plot sensory input
+plt.figure()
+for i, column_name in enumerate(data['gyro'].columns):
+    ax = plt.subplot(num_plots // 2, 2, i+1)
+    plt.plot(data['gyro'].index, data['gyro'][column_name])
+    ax.set_ylabel(column_name)
+    for point in data['events']:
+        plt.axvline(point,  label='event', c='m')
+
+for j, column_name in enumerate(data['eeg'].columns):
+    ax = plt.subplot(num_plots // 2, 2, i+j+2)
+    # plt.plot(data['eeg'].index, data['eeg'][column_name])
+    plt.plot(data['eeg'].index, signal.sosfilt(sos_stop, signal.sosfilt(sos_pass, data['eeg'][column_name].to_numpy())))
+    ax.set_ylabel(column_name)
+    for point in data['events']:
+        plt.axvline(point,  label='event', c='m')
+plt.show()
