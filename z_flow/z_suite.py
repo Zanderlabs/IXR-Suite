@@ -11,7 +11,7 @@ from z_flow import ZFlow
 
 
 class ZSuite():
-    def __init__(self, root):
+    def __init__(self, root) -> None:
         # setting title
         root.title("Z-suite mini v0.2")
         # setting window size
@@ -52,7 +52,7 @@ class ZSuite():
 
         self.textbox.configure(yscrollcommand=scrollbar.set)
 
-        def redirector(inputStr):
+        def redirector(inputStr: str) -> None:
             self.textbox.insert('0.0', inputStr)
 
         sys.stdout.write = redirector  # whenever sys.stdout.write is called, redirector is called.
@@ -253,7 +253,7 @@ class ZSuite():
         connectBtn["text"] = "  Connect"
         connectBtn.place(x=100, y=500, width=90, height=36)
 
-    def connectBtn_command(self):
+    def connectBtn_command(self) -> None:
         boardid = int(self.boardidEnt.get())
         timeout = int(self.timeoutEnt.get())
         record = int(self.logBrainDataEnt.get())
@@ -282,13 +282,14 @@ class ZSuite():
         x.start()
 
     @staticmethod
-    def CreateToolTip(widget, text):
+    def CreateToolTip(widget: tk.Label, text: str) -> None:
         toolTip = ToolTip(widget)
 
-        def enter(event):
+        def enter(event: str) -> None:
             toolTip.showtip(text)
 
-        def leave(event):
+        def leave(event: str) -> None:
             toolTip.hidetip()
+
         widget.bind('<Enter>', enter)
         widget.bind('<Leave>', leave)

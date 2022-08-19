@@ -2,29 +2,31 @@ import time
 from abc import ABC, abstractmethod
 
 import numpy as np
+import numpy.typing as npt
+import pandas as pd
+from brainflow import BoardIds, BoardShim, BrainFlowPresets
 from scipy import signal
-from brainflow import BrainFlowPresets
 
 
 class Classifier(ABC):
-    def __init__(self, type, interval, filter, method):
+    def __init__(self, model_type: str, interval: str, filter: str, method: str) -> None:
         self.model = {}
         self.feature_list = []
         self.label_list = []
-        self.type = type
+        self.type = model_type
         self.interval = interval
         self.filter = filter
         self.method = method
 
     @abstractmethod
-    def train(self):
+    def train(self) -> None:
         raise NotImplementedError
 
     @abstractmethod
-    def predict(self, board_shim, board_id, event_timestamp):
+    def predict(self, board_shim: BoardShim, board_id: BoardIds, event_timestamp: float) -> None:
         raise NotImplementedError
 
-    def collect_sample(self, board_shim, board_id, event_timestamp):
+    def collect_sample(self, board_shim: BoardShim, board_id: BoardIds, event_timestamp: float) -> npt.NDArray[np.float64]:
         interval = self.interval
         filter = self.filter
         method = self.method

@@ -1,16 +1,17 @@
 import numpy as np
-
+import numpy.typing as npt
+from brainflow import BoardIds, BoardShim
 from z_flow.classifiers import Classifier
 
 
 class LDA(Classifier):
-    def __init__(self, type, interval, filter, method):
-        super().__init__(type, interval, filter, method)
+    def __init__(self, model_type: str, interval: str, filter: str, method: str) -> None:
+        super().__init__(model_type, interval, filter, method)
         self.feature_list = []
         self.label_list = []
         self.model = {}
 
-    def train(self, cross_val=True, n_folds=5):
+    def train(self, cross_val: bool = True, n_folds: int = 5) -> None:
         feature_list = self.feature_list
         label_list = self.label_list
         if len(feature_list) < 5:
@@ -44,7 +45,8 @@ class LDA(Classifier):
             else:
                 self.model['cross validation accuracy'] = None
 
-    def train_LDA(self, feature_list, label_list):
+    def train_LDA(self, feature_list: list[npt.NDArray[np.float64]],
+                  label_list: list[int]) -> tuple[npt.NDArray[np.float64], float]:
         X = np.array(feature_list).T  # features*samples
         y = np.array(label_list)
         mu1 = np.mean(X[:, y == 1], axis=1)
@@ -56,7 +58,7 @@ class LDA(Classifier):
         b = w.T.dot((mu1 + mu0) / 2)
         return w, b
 
-    def predict(self, board_shim, board_id, event_timestamp):
+    def predict(self, board_shim: BoardShim, board_id: BoardIds, event_timestamp: float) -> None:
         if 'parameter-w,b' in self.model.keys():
             sample_to_predict = np.array(self.collect_sample(board_shim, board_id, event_timestamp)).T
             w, b = self.model['parameter-w,b']

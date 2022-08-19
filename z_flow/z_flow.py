@@ -10,14 +10,14 @@ from pylsl import (StreamInfo, StreamInlet, StreamOutlet, local_clock,
                    resolve_byprop)
 
 from z_flow.render import Graph
-from z_flow.classifiers import LDA, SVM
+from z_flow.classifiers import Classifier, LDA, SVM
 
 
 class ZFlow:
-    def __init__(args=None):
+    def __init__(args=None) -> None:
         pass
 
-    def run(self):
+    def run(self) -> None:
         BoardShim.enable_dev_board_logger()
         # BoardShim.set_log_file('test_board.log')
         # logging.basicConfig(filename='example.log', level=logging.DEBUG)
@@ -66,7 +66,8 @@ class ZFlow:
         self.start_all(board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact)
 
     @staticmethod
-    def message_decode(message, event_timestamp, dict_clf, board_shim, board_id):
+    def message_decode(message: str, event_timestamp: float, dict_clf: dict, board_shim: BoardShim,
+                       board_id: BoardIds) -> None:
         message_list = message.split(';')
         if message_list[0] == 'create':
             cf = ClassifierFactory(message_list[2])
@@ -114,7 +115,7 @@ class ZFlow:
             #     str_dict_info = str_dict_info + key + ': ' + str_clf_info + ' ###### '
             # outlet.push_sample([str_dict_info])
 
-    def thread_event(self, board_shim, board_id):
+    def thread_event(self, board_shim: BoardShim, board_id: BoardIds) -> None:
         dict_clf = {}
         # create LSL stream to receive events
         streams = resolve_byprop("name", "SendMarkersOnClick")
@@ -131,7 +132,8 @@ class ZFlow:
             outlet.push_sample(["got %s at time %s" % (event_sample[0], event_timestamp)])
             self.message_decode(event_sample[0], event_timestamp, dict_clf, board_shim, board_id)
 
-    def start_all(self, board_id, params, streamparams, calib_length, power_length, scale, offset, head_impact):
+    def start_all(self, board_id: BoardIds, params: BrainFlowInputParams, streamparams: str, calib_length: int,
+                  power_length: int, scale: float, offset: float, head_impact: float) -> None:
         board_shim = BoardShim(board_id, params)
         board_shim.prepare_session()
         board_shim.config_board("p61")
@@ -180,7 +182,8 @@ class ZFlow:
                     previous_timestamp[data_type] = data[timestamp_column, -1]
                     outlets[data_type].push_chunk(data.tolist(), previous_timestamp[data_type]-diff)
 
-    def connect(self, board_id, timeout, calib_length, power_length, scale, offset, head_impact, record):
+    def connect(self, board_id: BoardIds, timeout: int, calib_length: int, power_length: int,
+                scale: float, offset: float, head_impact: float, record) -> None:
         BoardShim.enable_dev_board_logger()
         logging.basicConfig(level=logging.DEBUG)
         params = BrainFlowInputParams()
@@ -195,10 +198,10 @@ class ZFlow:
 
 
 class ClassifierFactory:
-    def __init__(self, model_type):
+    def __init__(self, model_type: str) -> None:
         self.model_type = model_type
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> any:
         if self.model_type == 'LDA':
             return LDA(*args, **kwargs)
         elif self.model_type == 'SVM':

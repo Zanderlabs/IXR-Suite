@@ -7,7 +7,8 @@ from pyqtgraph.Qt import QtCore, QtGui
 
 
 class Graph:
-    def __init__(self, board_shim, calib_length, power_length, scale, offset, head_impact):
+    def __init__(self, board_shim: BoardShim, calib_length: int, power_length: int,
+                 scale: float, offset: float,head_impact: float) -> None:
         pg.setConfigOption('background', '#264653')
         pg.setConfigOption('foreground', '#e9f5db')
 
@@ -78,7 +79,7 @@ class Graph:
         timer.start(self.update_speed_ms)
         QtGui.QApplication.instance().exec_()
 
-    def _init_pens(self):
+    def _init_pens(self) -> None:
         self.pens = list()
         self.brushes = list()
         colors = ['#e9c46a', '#f4a261', '#e76f51', '#d62828', '#2a9d8f', '#168aad', '#e9f5db', '#A57E2F', '#A53B2F']
@@ -88,7 +89,7 @@ class Graph:
             brush = pg.mkBrush(colors[i])
             self.brushes.append(brush)
 
-    def _init_timeseries(self):
+    def _init_timeseries(self) -> None:
         self.plots = list()
         self.curves = list()
 
@@ -133,7 +134,7 @@ class Graph:
         # curve.setDownsampling(auto=True, method='mean', ds=3)
         self.curves.append(curve)
 
-    def _init_psd(self):
+    def _init_psd(self) -> None:
         self.psd_plot = self.win.addPlot(row=0, col=1, rowspan=4)
         self.psd_plot.showAxis('left', False)
         self.psd_plot.setMenuEnabled('left', False)
@@ -148,7 +149,7 @@ class Graph:
             psd_curve.setDownsampling(auto=True, method='mean', ds=3)
             self.psd_curves.append(psd_curve)
 
-    def _init_band_plot(self):
+    def _init_band_plot(self) -> None:
         self.band_plot = self.win.addPlot(row=4, col=1, rowspan=2)
         self.band_plot.showAxis('left', False)
         self.band_plot.setMenuEnabled('left', False)
@@ -166,7 +167,7 @@ class Graph:
         ay = self.band_plot.getAxis('bottom')
         ay.setTicks([tickdict.items()])
 
-    def _init_brain_power_plot(self):
+    def _init_brain_power_plot(self) -> None:
         self.power_plot = self.win.addPlot(row=6, col=1, rowspan=3)
         self.power_plot.setTitle('final brain power')
 
@@ -185,7 +186,7 @@ class Graph:
         ay = self.power_plot.getAxis('bottom')
         ay.setTicks([tickdict.items()])
 
-    def update(self):
+    def update(self) -> None:
         # collect EEG data
         eeg_data = self.board_shim.get_current_board_data(
             self.num_points_compute, BrainFlowPresets.DEFAULT_PRESET)[self.eeg_channels, :]

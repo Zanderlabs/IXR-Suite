@@ -1,4 +1,5 @@
 import numpy as np
+from brainflow import BoardIds, BoardShim
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
 
@@ -6,13 +7,13 @@ from z_flow.classifiers import Classifier
 
 
 class SVM(Classifier):
-    def __init__(self, type, interval, filter, method):
-        super().__init__(type, interval, filter, method)
+    def __init__(self, model_type: str, interval: str, filter: str, method: str) -> None:
+        super().__init__(model_type, interval, filter, method)
         self.feature_list = []
         self.label_list = []
         self.model = {}
 
-    def train(self, cross_val=True, n_folds=5):
+    def train(self, cross_val: bool = True, n_folds: int = 5) -> None:
         feature_list = self.feature_list
         label_list = self.label_list
         if len(feature_list) < 5:
@@ -29,7 +30,7 @@ class SVM(Classifier):
             else:
                 self.model['cross validation accuracy'] = None
 
-    def predict(self, board_shim, board_id, event_timestamp):
+    def predict(self, board_shim: BoardShim, board_id: BoardIds, event_timestamp: float) -> None:
         if 'model' in self.model.keys():
             sample_to_predict = np.array(self.collect_sample(board_shim, board_id, event_timestamp))
             clf = self.model['model']
