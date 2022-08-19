@@ -195,13 +195,13 @@ class ZFlow:
 
 
 class ClassifierFactory:
-    def __init__(self, type):
-        self.type = type
+    def __init__(self, model_type):
+        self.model_type = model_type
 
     def __call__(self, *args, **kwargs):
-        if self.type == 'LDA':
+        if self.model_type == 'LDA':
             return LDA(*args, **kwargs)
-        elif self.type == 'SVM':
+        elif self.model_type == 'SVM':
             return SVM(*args, **kwargs)
         else:
             raise ValueError("Type not known!")
