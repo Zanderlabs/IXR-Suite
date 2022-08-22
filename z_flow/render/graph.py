@@ -1,3 +1,5 @@
+from threading import Thread
+
 import numpy as np
 import pyqtgraph as pg
 from brainflow import (BoardShim, BrainFlowPresets, DataFilter,
@@ -6,14 +8,34 @@ from pylsl import StreamInfo, StreamOutlet
 from pyqtgraph.Qt import QtCore, QtGui
 
 
-class Graph:
-    def __init__(self, board_shim: BoardShim, calib_length: int, power_length: int,
-                 scale: float, offset: float,head_impact: float) -> None:
+class Graph(Thread):
+    """Class that implements a basic dashboard to
+    display EEG, PPG, motion, brain waves, and z-flow metrics.
+
+    It also pushes computed power metrics over LSL.
+
+    Extends from threading.Thread, for more information:
+    https://docs.python.org/3/library/threading.html#thread-objects
+
+    If thread_daemon parameter sets the thread to daemon mode,
+    the significance of this flag is that the entire Python program
+    exits when only daemon threads are left.
+
+    :param board_shim: Brainflow BoardShim to collect data from EEG devices.
+    :type board_shim: BoardShim
+    :param thread_name: Thread name, defaults to "graph"
+    :type thread_name: str, optional
+    :param thread_daemon: Sets thread as daemon, or not, defaults to False
+    :type thread_daemon: bool, optional
+    """
+
+    def __init__(self, board_shim: BoardShim, thread_name: str = "thread_graph", thread_daemon: bool = False) -> None:
+        Thread.__init__(self, name=thread_name, daemon=thread_daemon)
+        self.board_shim = board_shim
+        self.board_id = board_shim.get_board_id()
+
         pg.setConfigOption('background', '#264653')
         pg.setConfigOption('foreground', '#e9f5db')
-
-        self.board_id = board_shim.get_board_id()
-        self.board_shim = board_shim
 
         # print("\nEEG preset data format", BoardShim.get_board_descr(
         #     board_id=self.board_id, preset=BrainFlowPresets.DEFAULT_PRESET))
@@ -60,7 +82,7 @@ class Graph:
         info_transmit = StreamInfo('BrainPower', 'Z-metric', 1, 0, 'float32', 'zflow_transmit_power')
         self.outlet_transmit = StreamOutlet(info_transmit)
 
-        # start GUI
+    def run(self):
         self.app = QtGui.QApplication([])
         self.win = pg.GraphicsWindow(title='Z-flow', size=(1500, 1000))
 
@@ -71,7 +93,7 @@ class Graph:
         self._init_brain_power_plot()
 
         timer = QtCore.QTimer()
-        timer.timeout.connect(self.update)
+        timer.timeout.connect(self._update)
         timer.start(self.update_speed_ms)
         QtGui.QApplication.instance().exec_()
 
@@ -203,7 +225,7 @@ class Graph:
         ay = self.power_plot.getAxis('bottom')
         ay.setTicks([tickdict.items()])
 
-    def update(self) -> None:
+    def _update(self) -> None:
         # collect EEG data
         eeg_data = self.board_shim.get_current_board_data(
             self.num_points_compute, BrainFlowPresets.DEFAULT_PRESET)[self.eeg_channels, :]
