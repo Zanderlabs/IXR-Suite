@@ -46,11 +46,7 @@ class Graph:
         # self.relaxation.prepare()
 
         # selfmade power metrics
-        self.calib_length = int(calib_length * 1000 / self.update_speed_ms)
-        self.hist_length = int(power_length * 1000 / self.update_speed_ms)
-        self.brain_scale = scale
-        self.brain_center = offset
-        self.head_impact = head_impact
+        self.set_parameters()
 
         self.inverse_workload_calib = [0, 1]
         self.inverse_workload_hist = [0, 1]
@@ -78,6 +74,27 @@ class Graph:
         timer.timeout.connect(self.update)
         timer.start(self.update_speed_ms)
         QtGui.QApplication.instance().exec_()
+
+    def set_parameters(self, calib_length: int = 600, power_length: int = 10, scale: float = 1.5,
+                       offset: float = 0.5, head_impact: float = 0.2) -> None:
+        """Allows setting z-flow metrics. Is called with defaults on object initialization.
+
+        :param calib_length: Calibration length, defaults to 600
+        :type calib_length: int, optional
+        :param power_length: Power length, defaults to 10
+        :type power_length: int, optional
+        :param scale: Scale, defaults to 1.5
+        :type scale: float, optional
+        :param offset: Offset, defaults to 0.5
+        :type offset: float, optional
+        :param head_impact: Head impact, defaults to 0.2
+        :type head_impact: float, optional
+        """
+        self.calib_length = int(calib_length * 1000 / self.update_speed_ms)
+        self.hist_length = int(power_length * 1000 / self.update_speed_ms)
+        self.brain_scale = scale
+        self.brain_center = offset
+        self.head_impact = head_impact
 
     def _init_pens(self) -> None:
         self.pens = list()
