@@ -3,7 +3,6 @@ import logging
 from threading import Event
 
 from brainflow.board_shim import (BoardIds, BoardShim, BrainFlowInputParams)
-from brainflow.exit_codes import *
 
 from z_flow.render import Graph
 from z_flow.lsl_utility import LslEventListener, BfLslDataPublisher
