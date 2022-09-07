@@ -11,18 +11,10 @@ from z_flow.lsl_utility import LslEventListener, BfLslDataPublisher
 class ZFlow:
     def __init__(self, args: list[str] | None = None) -> None:
         self.board_shim = None
+        self.classifiers = {}
 
         parser = self.create_parser()
         self.args = parser.parse_args(args)
-
-
-        self.calib_length = 600
-        self.power_length = 10
-        self.scale = 1.5
-        self.offset = 0.5
-        self.head_impact = 0.2
-
-        self.classifiers = {}
 
     def __del__(self):
         if isinstance(self.board_shim, BoardShim):
@@ -53,10 +45,12 @@ class ZFlow:
         stay_alive.set()
 
         graph_thread = Graph(self.board_shim, thread_name="graph_1", thread_daemon=False)
+        graph_thread.set_parameters(self.args.calib_length, self.args.power_length,
+                                    self.args.scale, self.args.offset, self.args.head_impact)
         lsl_event_listener = LslEventListener(self.board_shim, stay_alive=stay_alive,
                                               thread_name="lsl_event_listener_1", thread_daemon=False)
         lsl_data_pusher = BfLslDataPublisher(self.board_shim, stay_alive=stay_alive,
-                                        thread_name="lsl_data_pusher_1", thread_daemon=False)
+                                             thread_name="lsl_data_pusher_1", thread_daemon=False)
 
         graph_thread.start()
         lsl_event_listener.start()
@@ -113,4 +107,9 @@ class ZFlow:
         parser.add_argument('--mac-address', type=str, help='mac address', required=False, default='')
         parser.add_argument('--serial-number', type=str, help='serial number', required=False, default='')
         parser.add_argument('--streamer-params', type=str, help='streamer params', required=False, default='')
+        parser.add_argument('--calib-length', type=int, default=600, help='Calibration length, defaults to 600')
+        parser.add_argument('--power-length', type=int, default=10, help='Power length, defaults to 10')
+        parser.add_argument('--scale', type=float, default=1.5, help='Scale, defaults to 1.5')
+        parser.add_argument('--offset', type=float, default=0.5, help='Offset, defaults to 0.5')
+        parser.add_argument('--head-impact', type=float, default=0.2, help='Head impact, defaults to 0.2')
         return parser
