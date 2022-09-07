@@ -9,9 +9,12 @@ from z_flow.lsl_utility import LslEventListener, BfLslDataPublisher
 
 
 class ZFlow:
-    def __init__(self) -> None:
+    def __init__(self, args: list[str] | None = None) -> None:
         self.board_shim = None
-        self.board_id = None
+
+        parser = self.create_parser()
+        self.args = parser.parse_args(args)
+
 
         self.calib_length = 600
         self.power_length = 10
@@ -34,24 +37,12 @@ class ZFlow:
                             format='%(asctime)s %(levelname)-8s %(message)s', level=logging.DEBUG)
         # logging.basicConfig(level=logging.DEBUG)
 
-        parser = argparse.ArgumentParser()
-        # use docs to check which parameters are required for specific board, for muse products, see specifically:
-        # https://brainflow.readthedocs.io/en/stable/SupportedBoards.html#muse
-        parser.add_argument('--board-id', type=int, help='board id, check docs to get a list of supported boards',
-                            required=False, default=BoardIds.MUSE_S_BOARD)
-        parser.add_argument('--timeout', type=int, help='timeout for device discovery or connection', required=False,
-                            default=30)
-        parser.add_argument('--mac-address', type=str, help='mac address', required=False, default='')
-        parser.add_argument('--serial-number', type=str, help='serial number', required=False, default='')
-        parser.add_argument('--streamer-params', type=str, help='streamer params', required=False, default='')
-        args = parser.parse_args()
-
         params = BrainFlowInputParams()
-        params.timeout = args.timeout
-        params.mac_address = args.mac_address
-        params.serial_number = args.serial_number
+        params.timeout = self.args.timeout
+        params.mac_address = self.args.mac_address
+        params.serial_number = self.args.serial_number
 
-        self._create_board_shim(args.board_id, params, args.streamer_params)
+        self._create_board_shim(self.args.board_id, params, self.args.streamer_params)
 
         self.module_launcher()
 
@@ -109,3 +100,17 @@ class ZFlow:
         self.board_shim.prepare_session()
         self.board_shim.config_board("p61")
         self.board_shim.start_stream(450000, streamparams)
+
+    @staticmethod
+    def create_parser() -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser("Z-flow")
+        # use docs to check which parameters are required for specific board, for muse products, see specifically:
+        # https://brainflow.readthedocs.io/en/stable/SupportedBoards.html#muse
+        parser.add_argument('--board-id', type=int, help='board id, check docs to get a list of supported boards',
+                            required=False, default=BoardIds.MUSE_S_BOARD)
+        parser.add_argument('--timeout', type=int, help='timeout for device discovery or connection', required=False,
+                            default=30)
+        parser.add_argument('--mac-address', type=str, help='mac address', required=False, default='')
+        parser.add_argument('--serial-number', type=str, help='serial number', required=False, default='')
+        parser.add_argument('--streamer-params', type=str, help='streamer params', required=False, default='')
+        return parser
