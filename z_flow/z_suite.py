@@ -50,11 +50,6 @@ class ZSuite():
 
         self.textbox.configure(yscrollcommand=scrollbar.set)
 
-        def redirector(inputStr: str) -> None:
-            self.textbox.insert('0.0', inputStr)
-
-        sys.stdout.write = redirector  # whenever sys.stdout.write is called, redirector is called.
-
         self.boardidEnt = tk.Entry(root)
         self.boardidEnt["bg"] = "#e9f5db"
         self.boardidEnt["borderwidth"] = "1px"
