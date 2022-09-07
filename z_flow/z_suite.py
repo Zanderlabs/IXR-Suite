@@ -252,31 +252,26 @@ class ZSuite():
         connectBtn.place(x=100, y=500, width=90, height=36)
 
     def connectBtn_command(self) -> None:
-        boardid = int(self.boardidEnt.get())
-        timeout = int(self.timeoutEnt.get())
-        record = int(self.logBrainDataEnt.get())
-        log = int(self.logConsoleEnt.get())
-        calib_length = int(self.calibrationHistoryEnt.get())
-        power_length = int(self.powerHistoryEnt.get())
-        scale = float(self.scaleEnt.get())
-        center = float(self.centerEnt.get())
-        headStrength = float(self.headStrengthEnt.get())
+        arguments = [
+        '--board-id', str(self.boardidEnt.get()),
+        '--timeout', str(self.timeoutEnt.get()),
+        '--mac-address', '',
+        '--serial-number', '',
+        '--streamer-params', '',
+        '--calib-length', str(self.calibrationHistoryEnt.get()),
+        '--power-length', str(self.powerHistoryEnt.get()),
+        '--scale', str(self.scaleEnt.get()),
+        '--offset', str(self.centerEnt.get()),
+        '--head-impact', str(self.headStrengthEnt.get()),
+        ]
 
-        print('headStrength: ' + self.headStrengthEnt.get())
-        print('center: ' + self.centerEnt.get())
-        print('scale: ' + self.scaleEnt.get())
-        print('power hist length: ' + self.powerHistoryEnt.get())
-        print('calib length: ' + self.calibrationHistoryEnt.get())
-        print('log: ' + self.logConsoleEnt.get())
-        print('record data: ' + self.logBrainDataEnt.get())
-        print('timeout: ' + self.timeoutEnt.get())
-        print('board ID: ' + str(boardid))
+        print(arguments)
         print('----------------------------------')
         print('Connecting!')
         print('----------------------------------')
 
-        x = threading.Thread(target=ZFlow().connect, args=(
-            boardid, timeout, calib_length, power_length, scale, center, headStrength, record), daemon=True)
+        zflow = ZFlow(args=arguments)
+        x = threading.Thread(target=zflow.run, daemon=True)
         x.start()
 
     @staticmethod

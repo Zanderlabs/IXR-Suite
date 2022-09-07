@@ -34,7 +34,10 @@ class ZFlow:
         params.mac_address = self.args.mac_address
         params.serial_number = self.args.serial_number
 
-        self._create_board_shim(self.args.board_id, params, self.args.streamer_params)
+        self.board_shim = BoardShim(self.args.board_id, params)
+        self.board_shim.prepare_session()
+        self.board_shim.config_board("p61")
+        self.board_shim.start_stream(450000, self.args.streamer_params)
 
         self.module_launcher()
 
@@ -65,35 +68,6 @@ class ZFlow:
         lsl_data_pusher.join()
 
         print("Closing down z-flow")
-
-    def connect(self, board_id: BoardIds, timeout: int, calib_length: int, power_length: int,
-                scale: float, offset: float, head_impact: float, record) -> None:
-        self.calib_length = calib_length
-        self.power_length = power_length
-        self.scale = scale
-        self.offset = offset
-        self.head_impact = head_impact
-
-        BoardShim.enable_dev_board_logger()
-        logging.basicConfig(level=logging.DEBUG)
-        params = BrainFlowInputParams()
-        params.timeout = timeout
-
-        if record == 1:
-            streamparams = "file://braindata.tsv:w"
-        else:
-            streamparams = ""
-
-        self._create_board_shim(board_id, params, streamparams)
-
-        self.module_launcher()
-
-    def _create_board_shim(self, board_id: BoardIds, params: BrainFlowInputParams, streamparams: str) -> None:
-        self.board_id = BoardIds(board_id)
-        self.board_shim = BoardShim(board_id, params)
-        self.board_shim.prepare_session()
-        self.board_shim.config_board("p61")
-        self.board_shim.start_stream(450000, streamparams)
 
     @staticmethod
     def create_parser() -> argparse.ArgumentParser:
