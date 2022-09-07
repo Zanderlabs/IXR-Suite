@@ -108,6 +108,8 @@ class LslEventListener(Thread):
         :return: Returns success message
         :rtype: str
         """
+        if message == '':
+            raise DecodeError("Got empty event message when decoding.")
         message_list = message.split(';')
         task = message_list.pop(0)
         name = message_list.pop(0)
