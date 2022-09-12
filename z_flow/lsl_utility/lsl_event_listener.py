@@ -53,7 +53,7 @@ class LslEventListener(Thread):
         inlet = None
 
         while self.stay_alive.is_set() and len(connections) == 0:
-            # Pol for connections as long the thread is alive.
+            # Poll for connections as long the thread is alive.
             # Make sure resolve_byprop has a timeout, otherwise the thread hangs.
             connections = resolve_byprop("name", "SendMarkersOnClick", timeout=1.0)
 
@@ -62,8 +62,8 @@ class LslEventListener(Thread):
             inlet = StreamInlet(connections[0])
 
         while self.stay_alive.is_set() and inlet is not None:
-            # Pol for incoming events as long the thread is alive.
-            # Make sure resolve_byprop has a timeout, otherwise the thread hangs.
+            # Poll for incoming events as long the thread is alive.
+            # Make sure pull_sample has a timeout, otherwise the thread hangs.
             event_sample, event_timestamp = inlet.pull_sample(timeout=1.0)
             if event_sample is not None:
                 thread = Thread(target=self._event_worker, args=(event_sample, event_timestamp))
