@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Event
 from time import strftime
 
-from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams, BrainFlowError
+from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams
 
 from z_flow.lsl_utility import BfLslDataPublisher, LslEventListener
 from z_flow.render import Graph
