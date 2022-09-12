@@ -1,3 +1,4 @@
+import logging
 import time
 from asyncio import Event
 from threading import Thread
@@ -42,7 +43,10 @@ class LslEventListener(Thread):
         self.stay_alive = stay_alive
         self.board_shim = board_shim
         self.classifiers = {}
-        self.outlet = StreamOutlet(StreamInfo('SendPrintInfo', 'Markers', 1, 0, 'string', 'Zflow_SendPrintInfo'))
+        name = 'z-flow-lsl-relay'
+        logging.info(f"Starting '{name}' LSL event relay stream.")
+        self.outlet = StreamOutlet(StreamInfo(name, 'Markers', 1, 0, 'string', 'z-flow-lsl-relay'))
+        logging.info(f"'{self.outlet.get_info().name()}' LSL event relay stream started.")
 
     def run(self) -> None:
         """Once a thread object is created, its activity must be started by calling the thread’s start() method.
@@ -58,8 +62,9 @@ class LslEventListener(Thread):
             connections = resolve_byprop("name", "SendMarkersOnClick", timeout=1.0)
 
         if len(connections) > 0:  # Only build connection when previous loop was exited because a connection was found.
-            print("Connection found:", connections[0])
+            logging.info(f"LSL event stream found: {connections[0].name()}, connecting ...")
             inlet = StreamInlet(connections[0])
+            logging.info(f"LSL event stream established: {inlet.info().name()}")
 
         while self.stay_alive.is_set() and inlet is not None:
             # Poll for incoming events as long the thread is alive.
@@ -68,7 +73,6 @@ class LslEventListener(Thread):
             if event_sample is not None:
                 thread = Thread(target=self._event_worker, args=(event_sample, event_timestamp))
                 threads.append(thread)
-                print(f"[{thread.name}]: Starting thread on [{event_timestamp}]")
                 thread.start()
 
         # Once stay_alive is cleared, wait for threads to finish
@@ -84,14 +88,19 @@ class LslEventListener(Thread):
         :param event_timestamp: The original event timestamp
         :type event_timestamp: float
         """
-        diff = time.time() - local_clock()
-        event_timestamp = event_timestamp + diff  # get timestamp with Unix Epoch format
-        print("got %s at time %s" % (event_sample[0], event_timestamp))
-        self.outlet.push_sample(["got %s at time %s" % (event_sample[0], event_timestamp)])
+        lsl_local_time = local_clock()
+        local_time = time.time()
+        event_timestamp = event_timestamp + (local_time - lsl_local_time)
+
+        logging.info(f"LSL event received, timestamps: "
+                     f"\n\tLSL local timestamp: \t{lsl_local_time}"
+                     f"\n\tLocal timestamp: \t{local_time}"
+                     f"\n\tEvent timestamp: \t{event_timestamp}")
+
         try:
             self._message_decode(event_sample[0], event_timestamp)
         except (DecodeError, ClfError) as e:
-            print(f"Warning: {e} \nStopping thread, please try again.")
+            logging.warning(f"{e}. Stopping thread, please try again.")
 
     def _message_decode(self, message: str, event_timestamp: float) -> str:
         """Parsers, decodes and executes LSL events passed as message.
@@ -119,17 +128,19 @@ class LslEventListener(Thread):
             filter_freq_cutoff = [float(value) for value in message_list.pop(0).split(',')]
             method = message_list.pop(0)
             self.classifiers[name] = Classifier(self.board_shim, model_type, time_range, filter_freq_cutoff, method)
-            return f"Created classifier instance, with name {name}."
+            logging.info(f"Created classifier instance, with name {name}.")
         elif task == 'collect' and name in self.classifiers:
             label = int(message_list.pop(0))
             self.classifiers[name].collect_sample(label, event_timestamp)
-            return f"Collected sample with, label: {label}, event timestamp: {event_timestamp}."
+            logging.info(f"Collected sample with, label: {label}.")
         elif task == 'train' and name in self.classifiers:
             scores = self.classifiers[name].train()
-            return f"Trained model successfully, with scores: {scores}."
+            logging.info(f"Trained model successfully, with scores:.")
+            for key, value in scores.items():
+                logging.info(f"    {key}: {value}")
         elif task == 'predict' and name in self.classifiers:
             prediction, probabilities = self.classifiers[name].predict(event_timestamp)
-            return f"Prediction: {prediction}, with probabilities: {probabilities}"
+            logging.info(f"Prediction: {prediction}, with probabilities: {probabilities}")
         elif name not in self.classifiers:
             raise DecodeError("Unknown classifier instance, please create one.")
         else:

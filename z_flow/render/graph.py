@@ -1,3 +1,4 @@
+import logging
 from threading import Thread
 
 import numpy as np
@@ -37,13 +38,6 @@ class Graph(Thread):
         pg.setConfigOption('background', '#264653')
         pg.setConfigOption('foreground', '#e9f5db')
 
-        # print("\nEEG preset data format", BoardShim.get_board_descr(
-        #     board_id=self.board_id, preset=BrainFlowPresets.DEFAULT_PRESET))
-        # print("\nGyro/Aux preset data format",
-        #       BoardShim.get_board_descr(board_id=self.board_id, preset=BrainFlowPresets.AUXILIARY_PRESET))
-        # print("\nPPG/Anc preset data format", BoardShim.get_board_descr(board_id=self.board_id,
-        #       preset=BrainFlowPresets.ANCILLARY_PRESET))
-
         self.eeg_channels = BoardShim.get_eeg_channels(self.board_id, BrainFlowPresets.DEFAULT_PRESET)
         self.gyro_channels = BoardShim.get_gyro_channels(self.board_id, BrainFlowPresets.AUXILIARY_PRESET)
         self.ppg_channels = BoardShim.get_ppg_channels(self.board_id, BrainFlowPresets.ANCILLARY_PRESET)
@@ -79,8 +73,11 @@ class Graph(Thread):
         self.power_metrics = 0
 
         # LSL stream
-        info_transmit = StreamInfo('BrainPower', 'Z-metric', 1, 0, 'float32', 'zflow_transmit_power')
+        name = 'BrainPower'
+        logging.info(f"Starting '{name}' Power Metric stream.")
+        info_transmit = StreamInfo(name, 'Z-metric', 1, 0, 'float32', 'zflow_transmit_power')
         self.outlet_transmit = StreamOutlet(info_transmit)
+        logging.info(f"'{self.outlet_transmit.get_info().name()}' Power Metric stream started.")
 
     def run(self):
         self.app = QtGui.QApplication([])
@@ -333,8 +330,8 @@ class Graph(Thread):
         engagement_z += self.brain_center
         engagement_z = np.clip(engagement_z, 0.05, 1)
         self.engagement_hist.append(engagement_z)
-        # print(engagement_z)
-        # print(self.engagement_hist)
+        # logging.info(f"Engagement: {engagement_z}")
+        # logging.info(f"Engagement history: {self.engagement_hist}")
 
         # weighted mean
         engagement_weighted_mean = 0
@@ -356,8 +353,8 @@ class Graph(Thread):
         #   if len(self.inverse_workload_hist) > self.hist_length:
         #       del self.inverse_workload_hist[0]
         #
-        #  # print('mean: ' + str(np.mean(self.inverse_workload_calib)))
-        #  # print('std: ' + str(np.std(self.inverse_workload_calib)))
+        #  # logging.info(f"mean: {str(np.mean(self.inverse_workload_calib))}")
+        #  # logging.info(f"std: {str(np.std(self.inverse_workload_calib))}")
         #
         #   # scale
         #   inverse_workload_z = (inverse_workload_idx - np.mean(self.inverse_workload_calib)) / np.std(self.inverse_workload_calib)
@@ -392,9 +389,7 @@ class Graph(Thread):
         self.band_bar.setOpts(height=avg_bands)
         self.power_bar.setOpts(height=self.power_metrics)
 
-        # print('###################')
-        # print(self.power_metrics)
-        # print('###################')
+        # logging.info(f"Power metric: {self.power_metrics}")
 
         self.outlet_transmit.push_sample([self.power_metrics])
 

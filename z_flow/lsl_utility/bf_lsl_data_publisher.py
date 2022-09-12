@@ -1,3 +1,4 @@
+import logging
 import time
 from threading import Event, Thread
 
@@ -45,11 +46,20 @@ class BfLslDataPublisher(Thread):
         for data_type, preset in self.data_types.items():
             n_chan = self.board_shim.get_num_rows(self.board_id, preset)
             rate = self.board_shim.get_sampling_rate(self.board_id, preset)
-            info_data = StreamInfo(f'z-flow-data-{data_type}', data_type, n_chan, rate, 'float32', 'z-flow-send-data')
+            description = BoardShim.get_board_descr(self.board_id, preset)
+            name = f'z-flow-{data_type}-data'
+
+            logging.info(f"Starting '{name}' LSL Data Publisher stream.")
+            info_data = StreamInfo(name, data_type, n_chan, rate,
+                                   'float32', 'z-flow-lsl-data-publisher')
             info_data.desc().append_child_value("manufacturer", "Brainflow")
-            info_data.desc().append_child_value("description", str(
-                BoardShim.get_board_descr(self.board_id, preset)))
+            info_data.desc().append_child_value("description", str(description))
             self.outlets[data_type] = StreamOutlet(info_data)
+
+            message = f"'{self.outlets[data_type].get_info().name()}' LSL Data Publisher stream started, description:"
+            for key, value in description.items():
+                message += f"\n\t{key}: {value}"
+            logging.info(message)
 
         self.previous_timestamp = {'eeg': 0, 'gyro': 0, 'ppg': 0}
         self.local2lsl_time_diff = time.time() - local_clock()  # compute time difference with LSL system.
