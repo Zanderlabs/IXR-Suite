@@ -71,7 +71,7 @@ class LslEventListener(Thread):
             # Make sure pull_sample has a timeout, otherwise the thread hangs.
             event_sample, event_timestamp = inlet.pull_sample(timeout=1.0)
             if event_sample is not None:
-                thread = Thread(target=self._event_worker, args=(event_sample, event_timestamp))
+                thread = Thread(target=self._lsl_event_worker, args=(event_sample, event_timestamp))
                 threads.append(thread)
                 thread.start()
 
@@ -79,7 +79,7 @@ class LslEventListener(Thread):
         for thread in threads:
             thread.join()
 
-    def _event_worker(self, event_sample: list[str], event_timestamp: float) -> None:
+    def _lsl_event_worker(self, event_sample: list[str], event_timestamp: float) -> None:
         """Thread worker that will handle/decode and incoming LSL and
         takes the appropriate actions based on the event.
 
