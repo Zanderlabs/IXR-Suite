@@ -6,7 +6,7 @@ from time import strftime
 
 from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams
 
-from z_flow.lsl_utility import BfLslDataPublisher, LslEventListener
+from z_flow.lsl_utility import BfLslDataPublisher, LslEventListener, LslLogger
 from z_flow.render import Graph
 
 
@@ -28,13 +28,17 @@ class ZFlow:
             BoardShim.enable_board_logger()
             BoardShim.set_log_file(self.args.log_file)
 
+        # configure root logger
+        handlers = [
+            logging.StreamHandler(),  # sys.stdout handler
+            logging.FileHandler(self.args.log_file),
+        ]
+        if self.args.lsl_log:
+            handlers.append(LslLogger('z-flow-log'))
         logging.basicConfig(
             level=logging.INFO,
             format="[%(asctime)s] [%(threadName)s] [%(levelname)s] %(message)s",
-            handlers=[
-                logging.FileHandler(self.args.log_file),
-                logging.StreamHandler()  # default is to stream to sys.stdout
-            ]
+            handlers=handlers
         )
 
     def __del__(self):
@@ -116,4 +120,6 @@ class ZFlow:
                                  "If a relative path is given it is relative to the current working directory.")
         parser.add_argument('--log-brainflow', type=bool, default=False, required=False,
                             help="Also write Brainflow logs to log file.")
+        parser.add_argument('--no-lsl-log', action='store_false', dest='lsl_log',
+                            help="Disables logging over lsl.")
         return parser
