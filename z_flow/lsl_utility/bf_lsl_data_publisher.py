@@ -71,5 +71,6 @@ class BfLslDataPublisher(Thread):
                 # only update timestamp and push if there is something left to push.
                 if data.shape[1] > 0:
                     self.previous_timestamp[data_type] = data[timestamp_column, -1]
-                    self.outlets[data_type].push_chunk(data.T.tolist(), self.previous_timestamp[data_type]-self.local2lsl_time_diff)
+                    self.outlets[data_type].push_chunk(data.T.tolist(),
+                                                       self.previous_timestamp[data_type] - self.local2lsl_time_diff)
             time.sleep(1)
