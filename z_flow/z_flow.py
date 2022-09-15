@@ -58,7 +58,12 @@ class ZFlow:
 
         logging.info("Starting brainflow session.")
         self.board_shim = BoardShim(self.args.board_id, params)
-        self.board_shim.prepare_session()
+        try:
+            self.board_shim.prepare_session()
+        except BrainFlowError as e:
+            logging.exception(e)
+            logging.info("Terminating Z-flow.")
+            quit()
         logging.info("Board connected, configuring.")
         if self.args.board_id == BoardIds.MUSE_2_BOARD:
             self.board_shim.config_board("p50")
