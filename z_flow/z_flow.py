@@ -19,6 +19,8 @@ class ZFlow:
         self.args = parser.parse_args(args)
 
         log_file_path = Path(self.args.log_file)
+        if not log_file_path.parent.exists():
+            log_file_path.parent.mkdir(parents=True, exist_ok=True)
         if log_file_path.exists():
             logging.getLogger().warning(f"A file with this name {self.args.log_file} already exists. "
                                         "The old file has been renamed with a timestamp.")
