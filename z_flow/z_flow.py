@@ -57,7 +57,10 @@ class ZFlow:
         self.board_shim = BoardShim(self.args.board_id, params)
         self.board_shim.prepare_session()
         logging.info("Board connected, configuring.")
-        self.board_shim.config_board("p61")
+        if self.args.board_id == BoardIds.MUSE_2_BOARD:
+            self.board_shim.config_board("p50")
+        elif self.args.board_id == BoardIds.MUSE_S_BOARD:
+            self.board_shim.config_board("p61")
         logging.info("Board configured, starting stream.")
         self.board_shim.start_stream(450000, self.args.streamer_params)
 
