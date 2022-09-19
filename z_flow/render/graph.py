@@ -330,8 +330,6 @@ class Graph(Thread):
         engagement_z += self.brain_center
         engagement_z = np.clip(engagement_z, 0.05, 1)
         self.engagement_hist.append(engagement_z)
-        # logging.info(f"Engagement: {engagement_z}")
-        # logging.info(f"Engagement history: {self.engagement_hist}")
 
         # weighted mean
         engagement_weighted_mean = 0
@@ -343,53 +341,11 @@ class Graph(Thread):
         engagement_weighted_mean = engagement_weighted_mean / sumweight
 
         self.engagement = engagement_weighted_mean
-
-        #   # inverse workload
-        #   inverse_workload_idx = parietal_alpha/frontal_theta
-        #   self.inverse_workload_calib.append(inverse_workload_idx)
-        #   if len(self.inverse_workload_calib) > self.calib_length:
-        #       del self.inverse_workload_calib[0]
-        #
-        #   if len(self.inverse_workload_hist) > self.hist_length:
-        #       del self.inverse_workload_hist[0]
-        #
-        #  # logging.info(f"mean: {str(np.mean(self.inverse_workload_calib))}")
-        #  # logging.info(f"std: {str(np.std(self.inverse_workload_calib))}")
-        #
-        #   # scale
-        #   inverse_workload_z = (inverse_workload_idx - np.mean(self.inverse_workload_calib)) / np.std(self.inverse_workload_calib)
-        #   inverse_workload_z /= 2*self.brain_scale
-        #   inverse_workload_z += self.brain_center
-        #   inverse_workload_z = np.clip(inverse_workload_z,0.05,1)
-        #   self.inverse_workload_hist.append(inverse_workload_z)
-        #
-        #   # weighted mean
-        #   inverse_workload_weighted_mean = 0
-        #   sumweight = 0
-        #   for count, hist_val in enumerate(self.inverse_workload_hist):
-        #       inverse_workload_weighted_mean += hist_val*count
-        #       sumweight += count
-        #
-        #   inverse_workload_weighted_mean = inverse_workload_weighted_mean / sumweight
-        #
-        #   self.inverse_workload = inverse_workload_weighted_mean
-
         self.power_metrics = np.float32(self.engagement + (1 - head_movement) * self.head_impact)
-
-        # power_metrics[3] = self.inverse_workload
-
-        # # ML brain metrics
-        # bands = DataFilter.get_avg_band_powers(eeg_data_plot, self.eeg_channels, self.eeg_sampling_rate, True)
-        # feature_vector = np.concatenate((bands[0], bands[1]))
-        #
-        # power_metrics[0] = self.concentration.predict(feature_vector)
-        #  power_metrics[1] = self.relaxation.predict(feature_vector)
 
         # plot bars
         self.band_bar.setOpts(height=avg_bands)
         self.power_bar.setOpts(height=self.power_metrics)
-
-        # logging.info(f"Power metric: {self.power_metrics}")
 
         self.outlet_transmit.push_sample([self.power_metrics])
 
