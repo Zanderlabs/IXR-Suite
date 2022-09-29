@@ -45,7 +45,8 @@ class LslEventListener(Thread):
         self.classifiers = {}
         name = 'z-flow-lsl-relay'
         logging.info(f"Starting '{name}' LSL event relay stream.")
-        self.outlet = StreamOutlet(StreamInfo(name, 'Markers', 1, 0, 'string', 'z-flow-lsl-relay'))
+        self.outlet = StreamOutlet(StreamInfo(name=name, type='Markers', channel_count=3,
+                                   nominal_srate=0, channel_format='string', source_id='z-flow-lsl-relay'))
         logging.info(f"'{self.outlet.get_info().name()}' LSL event relay stream started.")
 
     def run(self) -> None:
@@ -139,8 +140,9 @@ class LslEventListener(Thread):
             for key, value in scores.items():
                 logging.info(f"    {key}: {value}")
         elif task == 'predict' and name in self.classifiers:
-            prediction, probabilities = self.classifiers[name].predict(event_timestamp)
-            logging.info(f"Prediction: {prediction}, with probabilities: {probabilities}")
+            prediction, distance = self.classifiers[name].predict(event_timestamp)
+            logging.info(f"Prediction: {prediction[0]}, with distance: {distance[0]}.")
+            self.outlet.push_sample([name, str(prediction[0]), str(distance[0])])
         elif name not in self.classifiers:
             raise DecodeError("Unknown classifier instance, please create one.")
         else:

@@ -81,7 +81,7 @@ class Classifier:
 
     def _create_model(self, model_type: str) -> any:
         if model_type == 'svm':
-            return SVC(probability=True)
+            return SVC()
         elif model_type == 'lda':
             return LinearDiscriminantAnalysis()
         else:
@@ -202,8 +202,8 @@ class Classifier:
             self.model.fit(train_x, train_y)
             if use_cv is True:
                 self.scores = cross_validate(self.model, train_x, train_y, cv=n_folds,
-                                            scoring=['precision', 'recall', 'f1', 'accuracy'],
-                                            return_train_score=True)
+                                             scoring=['precision', 'recall', 'f1', 'accuracy'],
+                                             return_train_score=True)
             else:
                 train_pred = self.model.predict(train_y)
                 self.scores['train_precision'] = precision_score(train_y, train_pred)
@@ -221,7 +221,8 @@ class Classifier:
         :param event_timestamp: Original event timestamp
         :type event_timestamp: float
         :raises ClfError: Passes on sklearn.exception.NotFittedError as ClfError
-        :return: Returns list with prediction and probability scores for event sample
+        :return: Returns a list containing the sample prediction, the probabilities, the log probabilities,
+                 and possible classes.
         :rtype: list
         """
         try:
@@ -231,6 +232,5 @@ class Classifier:
 
         target_x = self.collect_sample(None, event_timestamp).reshape((1, -1))
         target_pred = self.model.predict(target_x)
-        target_prob = self.model.predict_log_proba(target_x)
-
-        return target_pred, target_prob
+        target_distance = self.model.decision_function(target_x)
+        return target_pred, target_distance
