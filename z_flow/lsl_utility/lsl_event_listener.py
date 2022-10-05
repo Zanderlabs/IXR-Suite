@@ -37,11 +37,12 @@ class LslEventListener(Thread):
     :type thread_daemon: bool, optional
     """
 
-    def __init__(self, board_shim: BoardShim, stay_alive: Event,
+    def __init__(self, board_shim: BoardShim, stay_alive: Event, reference: str = 'mean',
                  thread_name: str = "lsl_event_listener", thread_daemon: bool = False) -> None:
         Thread.__init__(self, name=thread_name, daemon=thread_daemon)
         self.stay_alive = stay_alive
         self.board_shim = board_shim
+        self.reference = reference
         self.classifiers = {}
         name = 'z-flow-lsl-relay'
         logging.info(f"Starting '{name}' LSL event relay stream.")
@@ -128,7 +129,8 @@ class LslEventListener(Thread):
             time_range = [int(value) for value in message_list.pop(0).split(',')]
             filter_freq_cutoff = [float(value) for value in message_list.pop(0).split(',')]
             method = message_list.pop(0)
-            self.classifiers[name] = Classifier(self.board_shim, model_type, time_range, filter_freq_cutoff, method)
+            self.classifiers[name] = Classifier(self.board_shim, model_type, time_range,
+                                                filter_freq_cutoff, method, self.reference)
             logging.info(f"Created classifier instance, with name {name}.")
         elif task == 'collect' and name in self.classifiers:
             label = int(message_list.pop(0))

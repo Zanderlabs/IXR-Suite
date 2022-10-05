@@ -36,12 +36,13 @@ class Classifier:
     """
 
     def __init__(self, board_shim: BoardShim, model_type: str, time_range: list[int],
-                 filter_freq_cutoff: list[float], method: str) -> None:
+                 filter_freq_cutoff: list[float], method: str, reference: str = 'mean') -> None:
         self.board_shim = board_shim
         self.model = self._create_model(model_type)
         self.time_range = time_range
         self.filter_freq_cutoff = filter_freq_cutoff
         self.method = self._cast_method(method)
+        self.reference = reference
 
         self.lock = threading.Lock()
         self.train_x = []
@@ -56,6 +57,7 @@ class Classifier:
         self.eeg_preset = BrainFlowPresets.DEFAULT_PRESET
         self.eeg_sample_rate = self.board_shim.get_sampling_rate(self.board_id, self.eeg_preset)
         self.eeg_data_channels = board_shim.get_eeg_channels(self.board_id, self.eeg_preset)
+        self.eeg_ref_channel = board_shim.get_other_channels(self.board_id, self.eeg_preset)
         self.eeg_timestamp_channel = board_shim.get_timestamp_channel(self.board_id, self.eeg_preset)
 
         self.motion_preset = BrainFlowPresets.AUXILIARY_PRESET
@@ -152,9 +154,14 @@ class Classifier:
         eeg_df.loc[:, :] = signal.lfilter(b, a, eeg_df.to_numpy().T).T
 
         # re-reference EEG data
-        eeg_mean = eeg_df.mean(axis=1)
-        eeg_df['negative_mean'] = 0.0
-        eeg_df = eeg_df.apply(lambda x: x - eeg_mean)  # subtract channel means from each channel
+        if self.reference == 'mean':
+            eeg_mean = eeg_df.mean(axis=1)
+            eeg_df['negative_mean'] = 0.0
+            eeg_df = eeg_df.apply(lambda x: x - eeg_mean)  # subtract channel means from each channel
+        if self.reference == 'fpz':
+            reference = data_eeg[:, self.eeg_ref_channel]
+            eeg_df = eeg_df.apply(lambda x: x - reference)
+            eeg_df['fpz'] = reference
 
         # Baseline calculation
         event_timestamp = pd.to_datetime(event_timestamp, unit='s')

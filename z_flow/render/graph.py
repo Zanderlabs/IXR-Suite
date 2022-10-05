@@ -7,6 +7,15 @@ from brainflow import (BoardShim, BrainFlowPresets, DataFilter,
                        DetrendOperations, FilterTypes, WindowOperations)
 from pylsl import StreamInfo, StreamOutlet
 from pyqtgraph.Qt import QtCore, QtGui
+from dataclasses import dataclass
+
+
+@dataclass
+class Channel:
+    ch_number: int
+    name: str
+    reference: bool  # indicates if the channel is a reference channel, not which re-referencing method should be used.
+    display: bool
 
 
 class Graph(Thread):
@@ -30,10 +39,13 @@ class Graph(Thread):
     :type thread_daemon: bool, optional
     """
 
-    def __init__(self, board_shim: BoardShim, thread_name: str = "thread_graph", thread_daemon: bool = False) -> None:
+    def __init__(self, board_shim: BoardShim, reference: str = 'mean', display_ref: bool = False,
+                 thread_name: str = "thread_graph", thread_daemon: bool = False) -> None:
         Thread.__init__(self, name=thread_name, daemon=thread_daemon)
         self.board_shim = board_shim
         self.board_id = board_shim.get_board_id()
+        self.reference = reference
+        self.display_ref = display_ref
 
         pg.setConfigOption('background', '#264653')
         pg.setConfigOption('foreground', '#e9f5db')
@@ -42,7 +54,11 @@ class Graph(Thread):
         self.gyro_preset = BrainFlowPresets.AUXILIARY_PRESET
         self.ppg_preset = BrainFlowPresets.ANCILLARY_PRESET
 
-        self.eeg_channels = BoardShim.get_eeg_channels(self.board_id, self.eeg_preset)
+        eeg_description = BoardShim.get_board_descr(self.board_id, self.eeg_preset)
+        self.eeg_channels = [Channel(ch_number, eeg_description['eeg_names'].split(',')[i], False, True)
+                             for i, ch_number in enumerate(eeg_description['eeg_channels'])]
+        self.eeg_channels += [Channel(ch_number, 'Fpz', True, self.display_ref)
+                              for ch_number in eeg_description['other_channels']]
         self.gyro_channels = BoardShim.get_gyro_channels(self.board_id, self.gyro_preset)
         self.ppg_channels = BoardShim.get_ppg_channels(self.board_id, self.ppg_preset)
         self.eeg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.eeg_preset)
@@ -121,15 +137,16 @@ class Graph(Thread):
         self.plots = list()
         self.curves = list()
 
-        axeslabels_eeg = ['left ear', 'left front', 'right front', 'right ear']
-        for i in range(len(self.eeg_channels)):
+        display_eeg_channels = [ch.name for ch in self.eeg_channels if ch.display]
+
+        for i, channel_name in enumerate(display_eeg_channels):
             p = self.win.addPlot(row=i, col=0)
             p.setMenuEnabled('left', False)
             p.showAxis('bottom', False)
             p.setMenuEnabled('bottom', False)
             p.setYRange(-150, 150, padding=0)
             p.showAxis('left', False)
-            p.setTitle(axeslabels_eeg[i])
+            p.setTitle(channel_name)
             self.plots.append(p)
             curve = p.plot(pen=self.pens[i % len(self.pens)])
             # curve.setDownsampling(auto=True, method='mean', ds=3)
@@ -137,7 +154,7 @@ class Graph(Thread):
 
         axeslabels_gyro = ['gyro 1', 'gyro 2', 'gyro 3']
         for i in range(len(self.gyro_channels)):
-            p = self.win.addPlot(row=i + len(self.eeg_channels), col=0)
+            p = self.win.addPlot(row=i + len(display_eeg_channels), col=0)
             p.setMenuEnabled('left', False)
             p.showAxis('bottom', False)
             p.setMenuEnabled('bottom', False)
@@ -150,7 +167,7 @@ class Graph(Thread):
             self.curves.append(curve)
 
         axeslabels_ppg = ['heart']
-        p = self.win.addPlot(row=1 + len(self.eeg_channels) + len(self.gyro_channels), col=0)
+        p = self.win.addPlot(row=1 + len(display_eeg_channels) + len(self.gyro_channels), col=0)
         p.setMenuEnabled('left', False)
         p.showAxis('bottom', False)
         p.setMenuEnabled('bottom', False)
@@ -214,20 +231,27 @@ class Graph(Thread):
         ay.setTicks([tickdict.items()])
 
     def _update(self) -> None:
-        eeg_data = self.board_shim.get_current_board_data(self.plot_window_s * self.eeg_sampling_rate,
-                                                          self.eeg_preset)[self.eeg_channels, :]
-        gyro_data = self.board_shim.get_current_board_data(self.plot_window_s * self.gyro_sampling_rate,
+        eeg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.eeg_sampling_rate),
+                                                          self.eeg_preset)
+        gyro_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.gyro_sampling_rate),
                                                            self.gyro_preset)[self.gyro_channels, :]
         # Only pick the first of the PPG channels, which is channel 1 (zero indexed) of the board data array
-        ppg_data = self.board_shim.get_current_board_data(self.plot_window_s * self.ppg_sampling_rate,
+        ppg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.ppg_sampling_rate),
                                                           self.ppg_preset)[self.ppg_channels[0], :]
 
-        # mean normalize
-        eeg_data = eeg_data - np.mean(eeg_data, axis=0)
+        # rereference
+        if self.reference == 'mean':
+            mean_channels = np.mean(eeg_data[[ch.ch_number for ch in self.eeg_channels if not ch.reference]], axis=0)
+            eeg_data[[ch.ch_number for ch in self.eeg_channels if not ch.reference]] -= mean_channels
+        elif self.reference == 'ref':
+            mean_reference_channels = np.mean(
+                eeg_data[[ch.ch_number for ch in self.eeg_channels if ch.reference]], axis=0)
+            eeg_data[[ch.ch_number for ch in self.eeg_channels if not ch.reference]] -= mean_reference_channels
 
         # add gyro data to curves, leave first few curves for eeg data.
+        num_display_ch = len([ch for ch in self.eeg_channels if ch.display])
         for count, _ in enumerate(self.gyro_channels):
-            self.curves[len(self.eeg_channels) + count].setData(gyro_data[count].tolist())
+            self.curves[num_display_ch + count].setData(gyro_data[count].tolist())
         head_movement = np.clip(np.mean(np.abs(gyro_data)) / 50, 0, 1)
         #  power_metrics[2] = head_movement
 
@@ -235,7 +259,7 @@ class Graph(Thread):
         DataFilter.detrend(ppg_data, DetrendOperations.CONSTANT.value)
         DataFilter.perform_bandpass(data=ppg_data, sampling_rate=self.ppg_sampling_rate, start_freq=0.8,
                                     stop_freq=4.0, order=4, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
-        self.curves[eeg_data.shape[0] + gyro_data.shape[0]].setData(ppg_data.tolist())
+        self.curves[num_display_ch + gyro_data.shape[0]].setData(ppg_data.tolist())
 
         # eeg processing
         avg_bands = [0, 0, 0, 0, 0]
@@ -243,47 +267,49 @@ class Graph(Thread):
         parietal_alpha = 1
         engagement_idx = 1
 
-        for count, _ in enumerate(self.eeg_channels):
-            DataFilter.detrend(eeg_data[count], DetrendOperations.CONSTANT.value)
-            DataFilter.perform_bandpass(data=eeg_data[count], sampling_rate=self.eeg_sampling_rate, start_freq=1.0,
+        for graph_number, eeg_channel in enumerate([ch for ch in self.eeg_channels if ch.display]):
+            DataFilter.detrend(eeg_data[eeg_channel.ch_number], DetrendOperations.CONSTANT.value)
+            DataFilter.perform_bandpass(data=eeg_data[eeg_channel.ch_number], sampling_rate=self.eeg_sampling_rate, start_freq=1.0,
                                         stop_freq=59.0, order=2, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
-            DataFilter.perform_bandstop(data=eeg_data[count], sampling_rate=self.eeg_sampling_rate, start_freq=48.0,
+            DataFilter.perform_bandstop(data=eeg_data[eeg_channel.ch_number], sampling_rate=self.eeg_sampling_rate, start_freq=48.0,
                                         stop_freq=52.0, order=2, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
             # plot timeseries
-            self.curves[count].setData(eeg_data[count].tolist())
+            self.curves[graph_number].setData(eeg_data[eeg_channel.ch_number].tolist())
 
             # take/slice the last samples of eeg_data that fall within the power metric window
-            eeg_data_pm_sliced = eeg_data[count][-(self.power_metric_window_s * self.eeg_sampling_rate):]
+            eeg_data_pm_sliced = eeg_data[eeg_channel.ch_number][-int(
+                self.power_metric_window_s * self.eeg_sampling_rate):]
             if len(eeg_data_pm_sliced) < self.psd_size:
                 continue  # First time _update() runs there is not enough data yet to compute psd
 
-            # compute psd
-            psd_data = DataFilter.get_psd_welch(data=eeg_data_pm_sliced,
-                                                nfft=self.psd_size,
-                                                overlap=self.psd_size // 2,
-                                                sampling_rate=self.eeg_sampling_rate,
-                                                window=WindowOperations.BLACKMAN_HARRIS.value)
-            lim = min(48, len(psd_data[0]))
-            self.psd_curves[count].setData(psd_data[1][0:lim].tolist(), psd_data[0][0:lim].tolist())
-            # compute bands
-            delta = DataFilter.get_band_power(psd_data, 1.0, 4.0)
-            theta = DataFilter.get_band_power(psd_data, 4.0, 8.0)
-            alpha = DataFilter.get_band_power(psd_data, 8.0, 13.0)
-            beta = DataFilter.get_band_power(psd_data, 13.0, 30.0)
-            gamma = DataFilter.get_band_power(psd_data, 30.0, 60.0)
-            avg_bands[0] = avg_bands[0] + delta
-            avg_bands[1] = avg_bands[1] + theta
-            avg_bands[2] = avg_bands[2] + alpha
-            avg_bands[3] = avg_bands[3] + beta
-            avg_bands[4] = avg_bands[4] + gamma
+            if not eeg_channel.reference:
+                # compute psd
+                psd_data = DataFilter.get_psd_welch(data=eeg_data_pm_sliced,
+                                                    nfft=self.psd_size,
+                                                    overlap=self.psd_size // 2,
+                                                    sampling_rate=self.eeg_sampling_rate,
+                                                    window=WindowOperations.BLACKMAN_HARRIS.value)
+                lim = min(48, len(psd_data[0]))
+                self.psd_curves[graph_number].setData(psd_data[1][0:lim].tolist(), psd_data[0][0:lim].tolist())
+                # compute bands
+                delta = DataFilter.get_band_power(psd_data, 1.0, 4.0)
+                theta = DataFilter.get_band_power(psd_data, 4.0, 8.0)
+                alpha = DataFilter.get_band_power(psd_data, 8.0, 13.0)
+                beta = DataFilter.get_band_power(psd_data, 13.0, 30.0)
+                gamma = DataFilter.get_band_power(psd_data, 30.0, 60.0)
+                avg_bands[0] = avg_bands[0] + delta
+                avg_bands[1] = avg_bands[1] + theta
+                avg_bands[2] = avg_bands[2] + alpha
+                avg_bands[3] = avg_bands[3] + beta
+                avg_bands[4] = avg_bands[4] + gamma
 
-            # compute selfmade brain metrics
-            engagement_idx += (beta / (theta + alpha)) / gamma
+                # compute selfmade brain metrics
+                engagement_idx += (beta / (theta + alpha)) / gamma
 
-            if count == 1 or count == 4:
-                parietal_alpha += alpha / gamma
-            else:
-                frontal_theta += theta / gamma
+                if 'Fp' in eeg_channel.name:
+                    frontal_theta += theta / gamma
+                elif 'TP' in eeg_channel.name:
+                    parietal_alpha += alpha / gamma
 
         avg_bands = [int(x / len(self.eeg_channels)) for x in avg_bands]  # average bands were just sums
 

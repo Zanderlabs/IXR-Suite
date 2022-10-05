@@ -67,8 +67,12 @@ class ZFlow:
         logging.info("Board connected, configuring.")
         if self.args.board_id == BoardIds.MUSE_2_BOARD:
             self.board_shim.config_board("p50")
+            if self.args.reference == 'fpz' or self.args.display_ref:
+                self.board_shim.config_board("p61")
         elif self.args.board_id == BoardIds.MUSE_S_BOARD:
             self.board_shim.config_board("p61")
+            if self.args.reference == 'fpz' or self.args.display_ref:
+                self.board_shim.config_board("p50")
         logging.info("Board configured, starting stream.")
         self.board_shim.start_stream(450000, self.args.streamer_params)
 
@@ -81,13 +85,15 @@ class ZFlow:
         stay_alive.set()
 
         logging.info("Starting dashboard.")
-        graph_thread = Graph(self.board_shim, thread_name="graph_1", thread_daemon=False)
+        graph_thread = Graph(self.board_shim, self.args.reference, self.args.display_ref,
+                             thread_name="graph_1", thread_daemon=False)
         graph_thread.set_parameters(self.args.calib_length, self.args.power_length,
                                     self.args.scale, self.args.offset, self.args.head_impact)
         graph_thread.start()
 
         logging.info("Starting LSL event listener.")
-        lsl_event_listener = LslEventListener(self.board_shim, stay_alive=stay_alive, thread_daemon=False)
+        lsl_event_listener = LslEventListener(self.board_shim, reference=self.args.reference,
+                                              stay_alive=stay_alive, thread_daemon=False)
         lsl_event_listener.start()
 
         logging.info("Starting Brainflow LSL data publisher.")
@@ -117,6 +123,15 @@ class ZFlow:
         parser.add_argument('--mac-address', type=str, help='mac address', required=False, default='')
         parser.add_argument('--serial-number', type=str, help='serial number', required=False, default='')
         parser.add_argument('--streamer-params', type=str, help='streamer params', required=False, default='')
+
+        # re-referencing options.
+        parser.add_argument('--reference', type=str, default='mean', choices=['none', 'mean', 'ref'],
+                            help="Determines what type of re-reference to use. "
+                                 " - none: No re-referencing is applied."
+                                 " - mean (default): Use the mean of the four frontal and temporal electrodes."
+                                 " - ref: Use the reference electrode(s) as a reference.")
+        parser.add_argument('--display-ref', action='store_true',
+                            help="Displays signal of the reference electrode(s) on the dashboard. ")
 
         # Z-flow Dashboard arguments
         parser.add_argument('--calib-length', type=int, default=600, help='Calibration length, defaults to 600')
