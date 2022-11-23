@@ -3,7 +3,7 @@ import time
 from threading import Event, Thread
 
 from brainflow import BoardShim, BrainFlowPresets
-from pylsl import StreamInfo, StreamOutlet, local_clock
+from pylsl import StreamInfo, StreamOutlet, local_clock, cf_double64
 
 
 class BfLslDataPublisher(Thread):
@@ -50,8 +50,8 @@ class BfLslDataPublisher(Thread):
             name = f'z-flow-{data_type}-data'
 
             logging.info(f"Starting '{name}' LSL Data Publisher stream.")
-            info_data = StreamInfo(name, data_type, n_chan, rate,
-                                   'float32', 'z-flow-lsl-data-publisher')
+            info_data = StreamInfo(name=name, type=data_type, channel_count=n_chan, nominal_srate=rate,
+                                   channel_format=cf_double64, source_id='z-flow-lsl-data-publisher')
             info_data.desc().append_child_value("manufacturer", "Brainflow")
             info_data.desc().append_child_value("description", str(description))
             self.outlets[data_type] = StreamOutlet(info_data)
