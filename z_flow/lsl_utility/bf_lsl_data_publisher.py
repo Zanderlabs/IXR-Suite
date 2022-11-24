@@ -39,8 +39,14 @@ class BfLslDataPublisher(Thread):
             'gyro': BrainFlowPresets.AUXILIARY_PRESET,
             'ppg': BrainFlowPresets.ANCILLARY_PRESET,
         }
-
         self.outlets = {}
+        self.previous_timestamp = {'eeg': 0, 'gyro': 0, 'ppg': 0}
+        self.local2lsl_time_diff = time.time() - local_clock()  # compute time difference with LSL system.
+
+    def run(self) -> None:
+        """Once a thread object is created, its activity must be started by calling the thread’s start() method.
+        This invokes the run() method in a separate thread of control.
+        """
         for data_type, preset in self.data_types.items():
             n_chan = self.board_shim.get_num_rows(self.board_id, preset)
             rate = self.board_shim.get_sampling_rate(self.board_id, preset)
@@ -59,13 +65,6 @@ class BfLslDataPublisher(Thread):
                 message += f"\n\t{key}: {value}"
             logging.info(message)
 
-        self.previous_timestamp = {'eeg': 0, 'gyro': 0, 'ppg': 0}
-        self.local2lsl_time_diff = time.time() - local_clock()  # compute time difference with LSL system.
-
-    def run(self) -> None:
-        """Once a thread object is created, its activity must be started by calling the thread’s start() method.
-        This invokes the run() method in a separate thread of control.
-        """
         while self.stay_alive.is_set():
             for data_type, preset in self.data_types.items():
                 timestamp_column = self.board_shim.get_timestamp_channel(self.board_id, preset=preset)
