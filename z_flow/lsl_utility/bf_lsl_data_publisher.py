@@ -34,8 +34,6 @@ class BfLslDataPublisher(Thread):
         self.stay_alive = stay_alive
         self.board_shim = board_shim
         self.board_id = board_shim.get_board_id()
-        self.classifiers = {}
-
         self.data_types = {
             'eeg': BrainFlowPresets.DEFAULT_PRESET,
             'gyro': BrainFlowPresets.AUXILIARY_PRESET,
