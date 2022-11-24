@@ -39,6 +39,7 @@ class BfLslDataPublisher(Thread):
             'gyro': BrainFlowPresets.AUXILIARY_PRESET,
             'ppg': BrainFlowPresets.ANCILLARY_PRESET,
         }
+        self.channels = {k: self.get_channels(v) for k, v in self.data_types.items()}
         self.outlets = {}
         self.previous_timestamp = {'eeg': 0, 'gyro': 0, 'ppg': 0}
         self.local2lsl_time_diff = time.time() - local_clock()  # compute time difference with LSL system.
@@ -50,20 +51,20 @@ class BfLslDataPublisher(Thread):
         for data_type, preset in self.data_types.items():
             n_chan = self.board_shim.get_num_rows(self.board_id, preset)
             rate = self.board_shim.get_sampling_rate(self.board_id, preset)
-            description = BoardShim.get_board_descr(self.board_id, preset)
             name = f'z-flow-{data_type}-data'
 
             logging.info(f"Starting '{name}' LSL Data Publisher stream.")
             info_data = StreamInfo(name=name, type=data_type, channel_count=n_chan, nominal_srate=rate,
                                    channel_format=cf_double64, source_id='z-flow-lsl-data-publisher')
-            info_data.desc().append_child_value("manufacturer", "Brainflow")
-            info_data.desc().append_child_value("description", str(description))
+            stream_channels = info_data.desc().append_child("channels")
+            for _, label in self.channels[data_type].items():
+                ch = stream_channels.append_child("channel")
+                ch.append_child_value("label", label)
+                if data_type == 'eeg':
+                    ch.append_child_value("unit", 'microvolts')
+                ch.append_child_value("type", data_type)
             self.outlets[data_type] = StreamOutlet(info_data)
-
-            message = f"'{self.outlets[data_type].get_info().name()}' LSL Data Publisher stream started, description:"
-            for key, value in description.items():
-                message += f"\n\t{key}: {value}"
-            logging.info(message)
+            logging.info(f"'{self.outlets[data_type].get_info().name()}' LSL Data Publisher stream started.")
 
         while self.stay_alive.is_set():
             for data_type, preset in self.data_types.items():
@@ -81,3 +82,17 @@ class BfLslDataPublisher(Thread):
                     self.outlets[data_type].push_chunk(data.T.tolist(),
                                                        self.previous_timestamp[data_type] - self.local2lsl_time_diff)
             time.sleep(1)
+
+    def get_channels(self, preset: BrainFlowPresets) -> dict[int, str]:
+        channels = {}
+        description = BoardShim.get_board_descr(self.board_id, preset)
+        if preset == BrainFlowPresets.DEFAULT_PRESET:
+            channels.update(dict(zip(description['eeg_channels'], description['eeg_names'].split(","))))
+        elif preset == BrainFlowPresets.AUXILIARY_PRESET:
+            channels.update({channel: f"accel_{i}" for i, channel in enumerate(description['accel_channels'])})
+            channels.update({channel: f"gyro_{i}" for i, channel in enumerate(description['gyro_channels'])})
+        elif preset == BrainFlowPresets.ANCILLARY_PRESET:
+            channels.update({channel: f"ppg_{i}" for i, channel in enumerate(description['ppg_channels'])})
+        else:
+            raise ValueError("Unrecognized BrainFlowPresets")
+        return channels
