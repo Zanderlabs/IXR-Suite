@@ -49,12 +49,11 @@ class BfLslDataPublisher(Thread):
         This invokes the run() method in a separate thread of control.
         """
         for data_type, preset in self.data_types.items():
-            n_chan = self.board_shim.get_num_rows(self.board_id, preset)
             rate = self.board_shim.get_sampling_rate(self.board_id, preset)
             name = f'z-flow-{data_type}-data'
 
             logging.info(f"Starting '{name}' LSL Data Publisher stream.")
-            info_data = StreamInfo(name=name, type=data_type, channel_count=n_chan, nominal_srate=rate,
+            info_data = StreamInfo(name=name, type=data_type, channel_count=len(self.channels[data_type]), nominal_srate=rate,
                                    channel_format=cf_double64, source_id='z-flow-lsl-data-publisher')
             stream_channels = info_data.desc().append_child("channels")
             for _, label in self.channels[data_type].items():
@@ -79,6 +78,7 @@ class BfLslDataPublisher(Thread):
                 # only update timestamp and push if there is something left to push.
                 if data.shape[1] > 0:
                     self.previous_timestamp[data_type] = data[timestamp_column, -1]
+                    data = data[list(self.channels[data_type].keys()), :]
                     self.outlets[data_type].push_chunk(data.T.tolist(),
                                                        self.previous_timestamp[data_type] - self.local2lsl_time_diff)
             time.sleep(1)
