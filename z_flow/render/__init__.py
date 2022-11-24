@@ -1,2 +1,2 @@
-from .graph import Graph
+from .zdashboard import ZDashboard
 from .tooltip import ToolTip

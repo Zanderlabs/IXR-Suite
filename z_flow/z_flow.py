@@ -7,7 +7,7 @@ from time import strftime
 from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams, BrainFlowError
 
 from z_flow.lsl_utility import BfLslDataPublisher, LslEventListener, LslLogger
-from z_flow.render import Graph
+from z_flow.render import ZDashboard
 
 
 class ZFlow:
@@ -85,7 +85,7 @@ class ZFlow:
         stay_alive.set()
 
         logging.info("Starting dashboard.")
-        graph_thread = Graph(self.board_shim, self.args.reference, self.args.display_ref,
+        graph_thread = ZDashboard(self.board_shim, self.args.reference, self.args.display_ref,
                              thread_name="graph_1", thread_daemon=False)
         graph_thread.set_parameters(self.args.calib_length, self.args.power_length,
                                     self.args.scale, self.args.offset, self.args.head_impact)

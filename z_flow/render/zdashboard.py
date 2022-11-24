@@ -18,7 +18,7 @@ class Channel:
     display: bool
 
 
-class Graph(Thread):
+class ZDashboard(Thread):
     """Class that implements a basic dashboard to
     display EEG, PPG, motion, brain waves, and z-flow metrics.
 
