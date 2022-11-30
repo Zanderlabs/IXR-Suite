@@ -7,7 +7,7 @@ from time import strftime
 from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams, BrainFlowError
 
 from z_flow.lsl_utility import BfLslDataPublisher, LslEventListener, LslLogger
-from z_flow.render import ZDashboard
+from z_flow.gui import ZDashboard
 
 
 class ZFlow:
