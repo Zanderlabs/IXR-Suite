@@ -3,7 +3,7 @@ from threading import Thread
 
 import numpy as np
 import pyqtgraph as pg
-from brainflow import (BoardShim, BrainFlowPresets, DataFilter,
+from brainflow import (BoardShim, BrainFlowPresets, DataFilter, BrainFlowError,
                        DetrendOperations, FilterTypes, WindowOperations)
 from pylsl import StreamInfo, StreamOutlet, cf_double64
 from pyqtgraph.Qt import QtCore, QtGui
@@ -232,13 +232,30 @@ class ZDashboard(Thread):
         ay.setTicks([tickdict.items()])
 
     def _update(self) -> None:
-        eeg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.eeg_sampling_rate),
-                                                          self.eeg_preset)
-        gyro_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.gyro_sampling_rate),
-                                                           self.gyro_preset)[self.gyro_channels, :]
-        # Only pick the first of the PPG channels, which is channel 1 (zero indexed) of the board data array
-        ppg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.ppg_sampling_rate),
-                                                          self.ppg_preset)[self.ppg_channels[0], :]
+        if not self.board_shim.is_prepared():
+            # if no connection is established, abort this method.
+            return
+
+        try:
+            eeg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.eeg_sampling_rate),
+                                                            self.eeg_preset)
+            gyro_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.gyro_sampling_rate),
+                                                            self.gyro_preset)[self.gyro_channels, :]
+            # Only pick the first of the PPG channels, which is channel 1 (zero indexed) of the board data array
+            ppg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.ppg_sampling_rate),
+                                                            self.ppg_preset)[self.ppg_channels[0], :]
+        except BrainFlowError as e:
+            # Right after board preparation the Brainflow connection might be a bit unstable.
+            # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
+            # If the case, abort method and try again later, but re-raise other exceptions.
+            if e.exit_code == BrainFlowError.INVALID_ARGUMENTS_ERROR:
+                return
+            else:
+                raise e
+
+        # Brainflow might still return empty arrays, abort method and try again later, if the case.
+        if len(eeg_data) < 1 or len(gyro_data) < 1 or len(ppg_data) < 1:
+            return
 
         # rereference
         if self.reference == 'mean':
