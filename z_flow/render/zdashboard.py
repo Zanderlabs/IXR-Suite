@@ -5,7 +5,7 @@ import numpy as np
 import pyqtgraph as pg
 from brainflow import (BoardShim, BrainFlowPresets, DataFilter,
                        DetrendOperations, FilterTypes, WindowOperations)
-from pylsl import StreamInfo, StreamOutlet
+from pylsl import StreamInfo, StreamOutlet, cf_double64
 from pyqtgraph.Qt import QtCore, QtGui
 from dataclasses import dataclass
 
@@ -83,7 +83,8 @@ class ZDashboard(Thread):
         # LSL stream
         name = 'BrainPower'
         logging.info(f"Starting '{name}' Power Metric stream.")
-        info_transmit = StreamInfo(name, 'Z-metric', 1, 0, 'float32', 'zflow_transmit_power')
+        info_transmit = StreamInfo(name=name, type='Z-metric', channel_count=1,
+                                   channel_format=cf_double64, source_id='zflow_transmit_power')
         self.outlet_transmit = StreamOutlet(info_transmit)
         logging.info(f"'{self.outlet_transmit.get_info().name()}' Power Metric stream started.")
 
