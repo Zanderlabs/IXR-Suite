@@ -5,7 +5,7 @@ import time
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from brainflow import BoardShim, BrainFlowPresets
+from brainflow import BoardShim, BrainFlowPresets, BrainFlowError
 from scipy import signal
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.exceptions import NotFittedError
@@ -137,10 +137,23 @@ class Classifier:
         :return: Returns X data
         :rtype: npt.NDArray[np.float64]
         """
+        if not self.board_shim.is_prepared():
+            raise ClfError("BoardShim not prepared")
+
         time.sleep(self.wait_time / 1000)  # wait_time is in ms
-        data_eeg = self.board_shim.get_current_board_data(self.eeg_num_samples, self.eeg_preset).T
-        if use_motion:
-            data_motion = self.board_shim.get_current_board_data(self.motion_num_samples, self.motion_preset).T
+        try:
+            data_eeg = self.board_shim.get_current_board_data(self.eeg_num_samples, self.eeg_preset).T
+            if use_motion:
+                data_motion = self.board_shim.get_current_board_data(self.motion_num_samples, self.motion_preset).T
+        except BrainFlowError as e:
+            # Right after board preparation the Brainflow connection might be a bit unstable.
+            # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
+            # If the case, raise as ClfError so lsl_event_listener() properly handles this expected exception.
+            # Re-raise other exceptions as those are not expected.
+            if e.exit_code == BrainFlowError.INVALID_ARGUMENTS_ERROR:
+                raise ClfError(e)
+            else:
+                raise e
 
         eeg_df = pd.DataFrame(data_eeg[:, self.eeg_data_channels], index=pd.to_datetime(
             data_eeg[:, self.eeg_timestamp_channel], unit='s'))
