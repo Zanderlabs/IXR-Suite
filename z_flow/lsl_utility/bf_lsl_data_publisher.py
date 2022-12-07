@@ -2,7 +2,7 @@ import logging
 import time
 from threading import Event, Thread
 
-from brainflow import BoardShim, BrainFlowPresets
+from brainflow import BoardShim, BrainFlowPresets, BrainFlowError
 from pylsl import StreamInfo, StreamOutlet, local_clock, cf_double64
 
 
@@ -66,12 +66,26 @@ class BfLslDataPublisher(Thread):
             logging.info(f"'{self.outlets[data_type].get_info().name()}' LSL Data Publisher stream started.")
 
         while self.stay_alive.is_set():
+            if not self.board_shim.is_prepared():
+                # if no connection is established, try again later.
+                continue
+
             for data_type, preset in self.data_types.items():
                 timestamp_column = self.board_shim.get_timestamp_channel(self.board_id, preset=preset)
 
-                # TODO: Potential cause for a bug here in the following lines
-                # if (loop/thread) latency is longer then 1024/sample_rate we skip frames of data. This should be resolved.
-                data = self.board_shim.get_current_board_data(1024, preset)
+                try:
+                    # TODO: Potential cause for a bug here in the following lines
+                    # if (loop/thread) latency is longer then 1024/sample_rate we skip frames of data. This should be resolved.
+                    data = self.board_shim.get_current_board_data(1024, preset)
+                except BrainFlowError as e:
+                    # Right after board preparation the Brainflow connection might be a bit unstable.
+                    # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
+                    # If that case, try again later, but re-raise other exceptions.
+                    if e.exit_code == BrainFlowError.INVALID_ARGUMENTS_ERROR:
+                        continue
+                    else:
+                        raise e
+
                 # slice rows with timestamps bigger then previous_timestamp
                 data = data[:, data[timestamp_column] > self.previous_timestamp[data_type]]
 
