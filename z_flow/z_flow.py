@@ -4,8 +4,9 @@ from pathlib import Path
 from threading import Event
 from time import strftime
 
-from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams, BrainFlowError
+from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams
 
+from z_flow.board import BrainFlowHandler
 from z_flow.lsl_utility import BfLslDataPublisher, LslEventListener, LslLogger
 from z_flow.gui import ZDashboard
 
@@ -43,70 +44,44 @@ class ZFlow:
             handlers=handlers
         )
 
-    def __del__(self):
-        logging.info("Releasing Brainflow sessions.")
-        try:
-            self.board_shim.release_all_sessions()
-        except BrainFlowError as e:
-            logging.exception(e)
-
     def run(self) -> None:
         params = BrainFlowInputParams()
         params.timeout = self.args.timeout
         params.mac_address = self.args.mac_address
         params.serial_number = self.args.serial_number
 
-        logging.info("Starting brainflow session.")
-        self.board_shim = BoardShim(self.args.board_id, params)
-        try:
-            self.board_shim.prepare_session()
-        except BrainFlowError as e:
-            logging.exception(e)
-            logging.info("Terminating Z-flow.")
-            quit()
-        logging.info("Board connected, configuring.")
-        if self.args.board_id == BoardIds.MUSE_2_BOARD:
-            self.board_shim.config_board("p50")
-            if self.args.reference == 'fpz' or self.args.display_ref:
-                self.board_shim.config_board("p61")
-        elif self.args.board_id == BoardIds.MUSE_S_BOARD:
-            self.board_shim.config_board("p61")
-            if self.args.reference == 'fpz' or self.args.display_ref:
-                self.board_shim.config_board("p50")
-        logging.info("Board configured, starting stream.")
-        self.board_shim.start_stream(450000, self.args.streamer_params)
-
-        self.module_launcher()
-
-    def module_launcher(self) -> None:
-        """Method that starts and execute the three main functions of z-flow, in their own thread of control.
-        """
         stay_alive = Event()
         stay_alive.set()
 
+        logging.info("Starting Brainflow Session (with Bluetooth connection)")
+        board_shim = BoardShim(self.args.board_id, params)
+        brainflow_thread = BrainFlowHandler(board_shim, params, stay_alive, self.args.streamer_params)
+        brainflow_thread.start()
+
         logging.info("Starting dashboard.")
-        graph_thread = ZDashboard(self.board_shim, self.args.reference, self.args.display_ref,
-                             thread_name="graph_1", thread_daemon=False)
-        graph_thread.set_parameters(self.args.calib_length, self.args.power_length,
-                                    self.args.scale, self.args.offset, self.args.head_impact)
-        graph_thread.start()
+        dashboard_thread = ZDashboard(board_shim, self.args.reference, self.args.display_ref,
+                                      thread_name="graph_1", thread_daemon=False)
+        dashboard_thread.set_parameters(self.args.calib_length, self.args.power_length,
+                                        self.args.scale, self.args.offset, self.args.head_impact)
+        dashboard_thread.start()
 
         logging.info("Starting LSL event listener.")
-        lsl_event_listener = LslEventListener(self.board_shim, reference=self.args.reference,
-                                              stay_alive=stay_alive, thread_daemon=False)
-        lsl_event_listener.start()
+        lsl_event_listener_thread = LslEventListener(board_shim, reference=self.args.reference,
+                                                     stay_alive=stay_alive, thread_daemon=False)
+        lsl_event_listener_thread.start()
 
         logging.info("Starting Brainflow LSL data publisher.")
-        lsl_data_pusher = BfLslDataPublisher(self.board_shim, stay_alive=stay_alive, thread_daemon=False)
-        lsl_data_pusher.start()
+        lsl_data_pusher_thread = BfLslDataPublisher(board_shim, stay_alive=stay_alive, thread_daemon=False)
+        lsl_data_pusher_thread.start()
 
         logging.info("Running Z-flow as long as the dashboard is open, please close the dashboard to close Z-flow.")
-        graph_thread.join()
+        dashboard_thread.join()
 
         logging.info("Z-flow dashboard closed, terminating all child threads.")
         stay_alive.clear()
-        lsl_event_listener.join()
-        lsl_data_pusher.join()
+        lsl_event_listener_thread.join()
+        lsl_data_pusher_thread.join()
+        brainflow_thread.join()
         logging.info("Main threads closed down.")
 
     @staticmethod
