@@ -74,8 +74,6 @@ class BfLslDataPublisher(Thread):
                 timestamp_column = self.board_shim.get_timestamp_channel(self.board_id, preset=preset)
 
                 try:
-                    # TODO: Potential cause for a bug here in the following lines
-                    # if (loop/thread) latency is longer then 1024/sample_rate we skip frames of data. This should be resolved.
                     data = self.board_shim.get_current_board_data(1024, preset)
                 except BrainFlowError as e:
                     # Right after board preparation the Brainflow connection might be a bit unstable.
