@@ -1,8 +1,9 @@
 import logging
 from threading import Event, Thread
-from time import time, sleep
+from time import sleep, time
 
-from brainflow import BoardIds, BoardShim, BrainFlowError, BrainFlowInputParams, BrainFlowPresets, BrainFlowExitCodes
+from brainflow import (BoardIds, BoardShim, BrainFlowError, BrainFlowExitCodes,
+                       BrainFlowInputParams, BrainFlowPresets)
 
 
 class BrainFlowHandler(Thread):

@@ -2,8 +2,9 @@ import logging
 import time
 from threading import Event, Thread
 
-from brainflow import BoardShim, BrainFlowPresets, BrainFlowError
-from pylsl import StreamInfo, StreamOutlet, local_clock, cf_double64
+from brainflow import (BoardShim, BrainFlowError, BrainFlowExitCodes,
+                       BrainFlowPresets)
+from pylsl import StreamInfo, StreamOutlet, cf_double64, local_clock
 
 
 class BfLslDataPublisher(Thread):
@@ -79,7 +80,7 @@ class BfLslDataPublisher(Thread):
                     # Right after board preparation the Brainflow connection might be a bit unstable.
                     # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
                     # If that case, try again later, but re-raise other exceptions.
-                    if e.exit_code == BrainFlowError.INVALID_ARGUMENTS_ERROR:
+                    if e.exit_code == BrainFlowExitCodes.INVALID_ARGUMENTS_ERROR:
                         continue
                     else:
                         raise e

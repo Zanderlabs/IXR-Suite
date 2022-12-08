@@ -5,11 +5,13 @@ import time
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from brainflow import BoardShim, BrainFlowPresets, BrainFlowError
+from brainflow import (BoardShim, BrainFlowError, BrainFlowExitCodes,
+                       BrainFlowPresets)
 from scipy import signal
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.exceptions import NotFittedError
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import (accuracy_score, f1_score, precision_score,
+                             recall_score)
 from sklearn.model_selection import cross_validate
 from sklearn.svm import SVC
 from sklearn.utils.validation import check_is_fitted
@@ -150,7 +152,7 @@ class Classifier:
             # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
             # If the case, raise as ClfError so lsl_event_listener() properly handles this expected exception.
             # Re-raise other exceptions as those are not expected.
-            if e.exit_code == BrainFlowError.INVALID_ARGUMENTS_ERROR:
+            if e.exit_code == BrainFlowExitCodes.INVALID_ARGUMENTS_ERROR:
                 raise ClfError(e)
             else:
                 raise e
