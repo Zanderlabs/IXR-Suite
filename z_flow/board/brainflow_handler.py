@@ -26,6 +26,7 @@ class BrainFlowHandler(Thread):
         while self.stay_alive.is_set():
             if not self.board_shim.is_prepared():
                 logging.info("Starting brainflow session.")
+                last_timestamp = 0.0
                 try:
                     self._prepare_board()
                     logging.info("Succesfully started brainflow session.")
@@ -48,7 +49,10 @@ class BrainFlowHandler(Thread):
                     logging.warning("Brainflow session connection time out, trying to reconnect.")
                     self.board_shim.release_session()
 
-    def __del__(self):
+    def __del__(self) -> None:
+        self.release_brainflow()
+
+    def release_brainflow(self) -> None:
         logging.info("Releasing all brainflow sessions.")
         try:
             self.board_shim.release_all_sessions()

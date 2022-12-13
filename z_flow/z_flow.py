@@ -82,7 +82,8 @@ class ZFlow:
         lsl_event_listener_thread.join()
         lsl_data_pusher_thread.join()
         brainflow_thread.join()
-        logging.info("Main threads closed down.")
+        brainflow_thread.release_brainflow()
+        logging.info("Successfully shutdown.")
 
     @staticmethod
     def create_parser() -> argparse.ArgumentParser:
