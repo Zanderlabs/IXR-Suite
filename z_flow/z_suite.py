@@ -32,7 +32,7 @@ class ZSuite():
         titleLabel["fg"] = "#168aad"
         titleLabel["justify"] = "center"
         titleLabel["text"] = "Z-Suite Mini"
-        titleLabel.place(x=350, y=20, width=200, height=25)
+        titleLabel.place(x=0, y=20, width=400, height=25)
 
         self.boardidEnt = tk.Entry(root)
         self.boardidEnt["bg"] = "#e9f5db"
