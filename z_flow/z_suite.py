@@ -34,22 +34,6 @@ class ZSuite():
         titleLabel["text"] = "Z-Suite Mini"
         titleLabel.place(x=350, y=20, width=200, height=25)
 
-        # progress bar
-        pb = ttk.Progressbar(root, orient='horizontal', mode='determinate', length=600)
-        pb.place(x=250, y=507)
-
-        # terminal frame
-
-        self.textbox = tk.Text(root)
-        self.textbox.pack()
-        self.textbox.configure(bg="black", fg="white")
-        self.textbox.place(x=400, y=100, width=450, height=310)
-
-        scrollbar = tk.Scrollbar(self.textbox, orient="vertical", command=self.textbox.yview)
-        scrollbar.pack(side="right", fill="y")
-
-        self.textbox.configure(yscrollcommand=scrollbar.set)
-
         self.boardidEnt = tk.Entry(root)
         self.boardidEnt["bg"] = "#e9f5db"
         self.boardidEnt["borderwidth"] = "1px"
