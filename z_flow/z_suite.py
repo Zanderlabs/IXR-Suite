@@ -263,12 +263,15 @@ class ZSuite():
         arguments = [
             '--board-id', str(self.boardidEnt.get()),
             '--timeout', str(self.timeoutEnt.get()),
+            '--reference', str(self.reference_ent.get()),
             '--calib-length', str(self.calibrationHistoryEnt.get()),
             '--power-length', str(self.powerHistoryEnt.get()),
             '--scale', str(self.scaleEnt.get()),
             '--offset', str(self.centerEnt.get()),
             '--head-impact', str(self.headStrengthEnt.get()),
         ]
+        if self.display_ref_ent.get() == '1':
+            arguments.append('--display-ref')
 
         zflow = ZFlow(args=arguments)
         x = threading.Thread(target=zflow.run, daemon=True)
