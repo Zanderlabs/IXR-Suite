@@ -4,8 +4,8 @@ import tkinter as tk
 import tkinter.font as tkfont
 import tkinter.ttk as ttk
 
-from z_flow.gui import ToolTip
 from z_flow import ZFlow
+from z_flow.gui import ToolTip
 
 
 class ZSuite():
