@@ -248,16 +248,13 @@ class ZSuite():
 
     def connectBtn_command(self) -> None:
         arguments = [
-        '--board-id', str(self.boardidEnt.get()),
-        '--timeout', str(self.timeoutEnt.get()),
-        '--mac-address', '',
-        '--serial-number', '',
-        '--streamer-params', '',
-        '--calib-length', str(self.calibrationHistoryEnt.get()),
-        '--power-length', str(self.powerHistoryEnt.get()),
-        '--scale', str(self.scaleEnt.get()),
-        '--offset', str(self.centerEnt.get()),
-        '--head-impact', str(self.headStrengthEnt.get()),
+            '--board-id', str(self.boardidEnt.get()),
+            '--timeout', str(self.timeoutEnt.get()),
+            '--calib-length', str(self.calibrationHistoryEnt.get()),
+            '--power-length', str(self.powerHistoryEnt.get()),
+            '--scale', str(self.scaleEnt.get()),
+            '--offset', str(self.centerEnt.get()),
+            '--head-impact', str(self.headStrengthEnt.get()),
         ]
 
         print(arguments)

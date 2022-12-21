@@ -47,8 +47,6 @@ class ZFlow:
     def run(self) -> None:
         params = BrainFlowInputParams()
         params.timeout = self.args.timeout
-        params.mac_address = self.args.mac_address
-        params.serial_number = self.args.serial_number
 
         stay_alive = Event()
         stay_alive.set()
@@ -96,8 +94,6 @@ class ZFlow:
                             required=False, default=BoardIds.MUSE_S_BOARD)
         parser.add_argument('--timeout', type=int, help='timeout for device discovery or connection', required=False,
                             default=30)
-        parser.add_argument('--mac-address', type=str, help='mac address', required=False, default='')
-        parser.add_argument('--serial-number', type=str, help='serial number', required=False, default='')
         parser.add_argument('--streamer-params', type=str, help='streamer params', required=False, default='')
 
         # re-referencing options.
