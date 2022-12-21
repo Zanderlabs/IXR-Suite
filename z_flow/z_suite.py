@@ -13,7 +13,7 @@ class ZSuite():
         # setting title
         root.title("Z-suite mini v0.2")
         # setting window size
-        root.configure(width=900, height=600)
+        root.configure(width=400, height=600)
         root.configure(bg='#264653')
         root.resizable(False, False)
 
