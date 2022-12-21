@@ -270,11 +270,6 @@ class ZSuite():
             '--head-impact', str(self.headStrengthEnt.get()),
         ]
 
-        print(arguments)
-        print('----------------------------------')
-        print('Connecting!')
-        print('----------------------------------')
-
         zflow = ZFlow(args=arguments)
         x = threading.Thread(target=zflow.run, daemon=True)
         x.start()
