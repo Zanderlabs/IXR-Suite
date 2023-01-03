@@ -44,6 +44,9 @@ class ZFlow:
             handlers=handlers
         )
 
+    def __del__(self) -> None:
+        logging.getLogger().handlers = []  # release all root logger handlers
+
     def run(self) -> None:
         params = BrainFlowInputParams()
         params.timeout = self.args.timeout
