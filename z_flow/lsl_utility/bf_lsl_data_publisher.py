@@ -29,12 +29,13 @@ class BfLslDataPublisher(Thread):
     :type thread_daemon: bool, optional
     """
 
-    def __init__(self, board_shim: BoardShim, stay_alive: Event,
+    def __init__(self, board_shim: BoardShim, stay_alive: Event, push_full_vec: bool = False,
                  thread_name: str = "lsl_data_pusher", thread_daemon: bool = False) -> None:
         Thread.__init__(self, name=thread_name, daemon=thread_daemon)
         self.stay_alive = stay_alive
         self.board_shim = board_shim
         self.board_id = board_shim.get_board_id()
+        self.push_full_vec = push_full_vec
         self.data_types = {
             'eeg': BrainFlowPresets.DEFAULT_PRESET,
             'gyro': BrainFlowPresets.AUXILIARY_PRESET,
@@ -52,9 +53,11 @@ class BfLslDataPublisher(Thread):
         for data_type, preset in self.data_types.items():
             rate = self.board_shim.get_sampling_rate(self.board_id, preset)
             name = f'z-flow-{data_type}-data'
+            channel_count = self.board_shim.get_board_descr(self.board_id, preset)['num_rows'] \
+                if self.push_full_vec else len(self.channels[data_type])
 
             logging.info(f"Starting '{name}' LSL Data Publisher stream.")
-            info_data = StreamInfo(name=name, type=data_type, channel_count=len(self.channels[data_type]), nominal_srate=rate,
+            info_data = StreamInfo(name=name, type=data_type, channel_count=channel_count, nominal_srate=rate,
                                    channel_format=cf_double64, source_id='z-flow-lsl-data-publisher')
             stream_channels = info_data.desc().append_child("channels")
             for _, label in self.channels[data_type].items():
@@ -91,7 +94,8 @@ class BfLslDataPublisher(Thread):
                 # only update timestamp and push if there is something left to push.
                 if data.shape[1] > 0:
                     self.previous_timestamp[data_type] = data[timestamp_column, -1]
-                    data = data[list(self.channels[data_type].keys()), :]
+                    if not self.push_full_vec:
+                        data = data[list(self.channels[data_type].keys()), :]
                     self.outlets[data_type].push_chunk(data.T.tolist(),
                                                        self.previous_timestamp[data_type] - self.local2lsl_time_diff)
             time.sleep(1)

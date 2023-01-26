@@ -72,7 +72,7 @@ class ZFlow:
         lsl_event_listener_thread.start()
 
         logging.info("Starting Brainflow LSL data publisher.")
-        lsl_data_pusher_thread = BfLslDataPublisher(board_shim, stay_alive=stay_alive, thread_daemon=False)
+        lsl_data_pusher_thread = BfLslDataPublisher(board_shim, push_full_vec=self.args.push_full_vec, stay_alive=stay_alive, thread_daemon=False)
         lsl_data_pusher_thread.start()
 
         logging.info("Running Z-flow as long as the dashboard is open, please close the dashboard to close Z-flow.")
@@ -123,4 +123,6 @@ class ZFlow:
                             help="Also write Brainflow logs to log file.")
         parser.add_argument('--no-lsl-log', action='store_false', dest='lsl_log',
                             help="Disables logging over lsl.")
+        parser.add_argument('--push_full_vec', action='store_true',
+                            help='Push the full vector over LSL received by Brainflow.')
         return parser
