@@ -4,14 +4,14 @@ import tkinter as tk
 import tkinter.font as tkfont
 import tkinter.ttk as ttk
 
-from z_flow import ZFlow
-from z_flow.gui import ToolTip
+from ixr_flow import IXRFlow
+from ixr_flow.gui import ToolTip
 
 
-class ZSuite():
+class IXRSuite():
     def __init__(self, root) -> None:
         # setting title
-        root.title("Z-suite mini v0.2")
+        root.title("IXR Suite")
         # setting window size
         root.configure(width=400, height=600)
         root.configure(bg='#264653')
@@ -31,7 +31,7 @@ class ZSuite():
         titleLabel["font"] = ft
         titleLabel["fg"] = "#168aad"
         titleLabel["justify"] = "center"
-        titleLabel["text"] = "Z-Suite Mini"
+        titleLabel["text"] = "Intuitive XR Suite v0.3"
         titleLabel.place(x=0, y=20, width=400, height=25)
 
         # create input boxes
@@ -108,7 +108,7 @@ class ZSuite():
         self.reference_ent["font"] = ft
         self.reference_ent["fg"] = "#264653"
         self.reference_ent["justify"] = "center"
-        self.reference_ent.insert(tk.END, 'mean')
+        self.reference_ent.insert(tk.END, 'none')
         self.reference_ent.place(x=250, y=160, width=70, height=25)
 
         reference_label = tk.Label(root)
@@ -273,8 +273,8 @@ class ZSuite():
         if self.display_ref_ent.get() == '1':
             arguments.append('--display-ref')
 
-        zflow = ZFlow(args=arguments)
-        x = threading.Thread(target=zflow.run, daemon=True)
+        ixrflow = IXRFlow(args=arguments)
+        x = threading.Thread(target=ixrflow.run, daemon=True)
         x.start()
 
     @staticmethod

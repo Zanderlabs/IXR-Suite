@@ -52,13 +52,13 @@ class BfLslDataPublisher(Thread):
         """
         for data_type, preset in self.data_types.items():
             rate = self.board_shim.get_sampling_rate(self.board_id, preset)
-            name = f'z-flow-{data_type}-data'
+            name = f'ixr-flow-{data_type}-data'
             channel_count = self.board_shim.get_board_descr(self.board_id, preset)['num_rows'] \
                 if self.push_full_vec else len(self.channels[data_type])
 
             logging.info(f"Starting '{name}' LSL Data Publisher stream.")
             info_data = StreamInfo(name=name, type=data_type, channel_count=channel_count, nominal_srate=rate,
-                                   channel_format=cf_double64, source_id='z-flow-lsl-data-publisher')
+                                   channel_format=cf_double64, source_id='ixr-flow-lsl-data-publisher')
             stream_channels = info_data.desc().append_child("channels")
             for _, label in self.channels[data_type].items():
                 ch = stream_channels.append_child("channel")

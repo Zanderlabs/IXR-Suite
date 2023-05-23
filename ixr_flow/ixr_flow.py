@@ -6,12 +6,12 @@ from time import strftime
 
 from brainflow.board_shim import BoardIds, BoardShim, BrainFlowInputParams
 
-from z_flow.board import BrainFlowHandler
-from z_flow.lsl_utility import BfLslDataPublisher, LslEventListener, LslLogger
-from z_flow.gui import ZDashboard
+from ixr_flow.board import BrainFlowHandler
+from ixr_flow.lsl_utility import BfLslDataPublisher, LslEventListener, LslLogger
+from ixr_flow.gui import IXRDashboard
 
 
-class ZFlow:
+class IXRFlow:
     def __init__(self, args: list[str] | None = None) -> None:
         self.board_shim = None
         self.classifiers = {}
@@ -37,7 +37,7 @@ class ZFlow:
             logging.FileHandler(self.args.log_file),
         ]
         if self.args.lsl_log:
-            handlers.append(LslLogger('z-flow-log'))
+            handlers.append(LslLogger('ixr-flow-log'))
         logging.basicConfig(
             level=logging.INFO,
             format="[%(asctime)s] [%(threadName)s] [%(levelname)s] %(message)s",
@@ -60,7 +60,7 @@ class ZFlow:
         brainflow_thread.start()
 
         logging.info("Starting dashboard.")
-        dashboard_thread = ZDashboard(board_shim, self.args.reference, self.args.display_ref,
+        dashboard_thread = IXRDashboard(board_shim, self.args.reference, self.args.display_ref,
                                       thread_name="graph_1", thread_daemon=False)
         dashboard_thread.set_parameters(self.args.calib_length, self.args.power_length,
                                         self.args.scale, self.args.offset, self.args.head_impact)
@@ -75,10 +75,10 @@ class ZFlow:
         lsl_data_pusher_thread = BfLslDataPublisher(board_shim, push_full_vec=self.args.push_full_vec, stay_alive=stay_alive, thread_daemon=False)
         lsl_data_pusher_thread.start()
 
-        logging.info("Running Z-flow as long as the dashboard is open, please close the dashboard to close Z-flow.")
+        logging.info("Running IXR-flow as long as the dashboard is open, please close the dashboard to close IXR-flow.")
         dashboard_thread.join()
 
-        logging.info("Z-flow dashboard closed, terminating all child threads.")
+        logging.info("IXR-flow dashboard closed, terminating all child threads.")
         stay_alive.clear()
         lsl_event_listener_thread.join()
         lsl_data_pusher_thread.join()
@@ -88,7 +88,7 @@ class ZFlow:
 
     @staticmethod
     def create_parser() -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser("Z-flow")
+        parser = argparse.ArgumentParser("IXR-flow")
 
         # Brainflow arguments
         # use docs to check which parameters are required for specific board, for muse products, see specifically:
@@ -108,16 +108,16 @@ class ZFlow:
         parser.add_argument('--display-ref', action='store_true',
                             help="Displays signal of the reference electrode(s) on the dashboard. ")
 
-        # Z-flow Dashboard arguments
+        # IXR-flow Dashboard arguments
         parser.add_argument('--calib-length', type=int, default=600, help='Calibration length, defaults to 600')
         parser.add_argument('--power-length', type=int, default=10, help='Power length, defaults to 10')
         parser.add_argument('--scale', type=float, default=1.5, help='Scale, defaults to 1.5')
         parser.add_argument('--offset', type=float, default=0.5, help='Offset, defaults to 0.5')
         parser.add_argument('--head-impact', type=float, default=0.2, help='Head impact, defaults to 0.2')
 
-        # Z-flow utility arguments
-        parser.add_argument('--log-file', type=str, default='z_flow.log', required=False,
-                            help="The file name where the Z-flow will write it's log's to. "
+        # IXR-flow utility arguments
+        parser.add_argument('--log-file', type=str, default='ixr_flow.log', required=False,
+                            help="The file name where the IXR-flow will write it's log's to. "
                                  "If a relative path is given it is relative to the current working directory.")
         parser.add_argument('--log-brainflow', type=bool, default=False, required=False,
                             help="Also write Brainflow logs to log file.")

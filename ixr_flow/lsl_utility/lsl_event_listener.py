@@ -6,7 +6,7 @@ from threading import Thread
 from brainflow import BoardShim
 from pylsl import (StreamInfo, StreamInlet, StreamOutlet, local_clock,
                    resolve_byprop)
-from z_flow.classifiers import Classifier, ClfError
+from ixr_flow.classifiers import Classifier, ClfError
 
 
 class DecodeError(Exception):
@@ -44,10 +44,10 @@ class LslEventListener(Thread):
         self.board_shim = board_shim
         self.reference = reference
         self.classifiers = {}
-        name = 'z-flow-lsl-relay'
+        name = 'ixr-flow-lsl-relay'
         logging.info(f"Starting '{name}' LSL event relay stream.")
         self.outlet = StreamOutlet(StreamInfo(name=name, type='Markers', channel_count=3,
-                                   nominal_srate=0, channel_format='string', source_id='z-flow-lsl-relay'))
+                                   nominal_srate=0, channel_format='string', source_id='ixr-flow-lsl-relay'))
         logging.info(f"'{self.outlet.get_info().name()}' LSL event relay stream started.")
 
     def run(self) -> None:
