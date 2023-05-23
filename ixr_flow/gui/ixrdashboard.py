@@ -19,9 +19,9 @@ class Channel:
     display: bool
 
 
-class ZDashboard(Thread):
+class IXRDashboard(Thread):
     """Class that implements a basic dashboard to
-    display EEG, PPG, motion, brain waves, and z-flow metrics.
+    display EEG, PPG, motion, brain waves, and ixr-flow metrics.
 
     It also pushes computed power metrics over LSL.
 
@@ -84,14 +84,14 @@ class ZDashboard(Thread):
         # LSL stream
         name = 'BrainPower'
         logging.info(f"Starting '{name}' Power Metric stream.")
-        info_transmit = StreamInfo(name=name, type='Z-metric', channel_count=1,
-                                   channel_format=cf_double64, source_id='zflow_transmit_power')
+        info_transmit = StreamInfo(name=name, type='IXR-metric', channel_count=1,
+                                   channel_format=cf_double64, source_id='ixrflow_transmit_power')
         self.outlet_transmit = StreamOutlet(info_transmit)
         logging.info(f"'{self.outlet_transmit.get_info().name()}' Power Metric stream started.")
 
     def run(self):
         self.app = QtGui.QApplication([])
-        self.win = pg.GraphicsWindow(title='Z-flow', size=(1500, 1000))
+        self.win = pg.GraphicsWindow(title='IXR-flow', size=(1500, 1000))
 
         self._init_pens()
         self._init_timeseries()
@@ -106,7 +106,7 @@ class ZDashboard(Thread):
 
     def set_parameters(self, calib_length: int = 600, power_length: int = 10, scale: float = 1.5,
                        offset: float = 0.5, head_impact: float = 0.2) -> None:
-        """Allows setting z-flow metrics. Is called with defaults on object initialization.
+        """Allows setting ixr-flow metrics. Is called with defaults on object initialization.
 
         :param calib_length: Calibration length, defaults to 600
         :type calib_length: int, optional

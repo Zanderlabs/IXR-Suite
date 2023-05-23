@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from z_flow import ZFlow
+from ixr_flow import IXRFlow
 
 if __name__ == '__main__':
-    ZFlow().run()
+    IXRFlow().run()
