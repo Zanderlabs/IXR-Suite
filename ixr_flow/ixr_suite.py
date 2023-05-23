@@ -65,7 +65,7 @@ class IXRSuite():
         self.boardidEnt["font"] = ft
         self.boardidEnt["fg"] = "#264653"
         self.boardidEnt["justify"] = "center"
-        self.boardidEnt.insert(tk.END, '38')
+        self.boardidEnt.insert(tk.END, '39')
         #self.boardidEnt["textvariable"] = self.text_boardid
         self.boardidEnt.place(x=250, y=80, width=70, height=25)
 
@@ -122,7 +122,7 @@ class IXRSuite():
         self.CreateToolTip(reference_label,
                            text="Determines what type of re-reference to use.\n"
                                 " - none: No re-referencing is applied.\n"
-                                " - mean (default): Use the mean of the four frontal and temporal electrodes.\n"
+                                " - mean: Use the mean of the four frontal and temporal electrodes.\n"
                                 " - ref: Use the reference electrode(s) as a reference.")
 
     def create_display_ref_input(self, root):
