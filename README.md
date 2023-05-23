@@ -1,8 +1,14 @@
 # IXR Suite
 
-Middleware between physiological hardware and primarily VR applications.**This package is build and tested on python 3.10.x**
+The IXR Suite is a middleware between physiological hardware and virtual environments. It is the result of a collaboration between [Zanderlabs](https://zanderlabs.com/) and the [»Young Investigator Group – Intuitive XR«](https://www.b-tu.de/researchschool/gefoerderte-forschungsaktivitaeten/young-investigator-group-intuitive-xr) of the Brandenburg University of Technology Cottbus-Senftenberg.
+
+## How-to guide
+
+See [this slidedeck](https://docs.google.com/presentation/d/1aDD0TuLVqdQ3OrO-flbkxTzb2gyvidsCp46c-4gSyvE) for a simple guide on how to install and run the software on windows with VS Code.
 
 ## Dependencies
+
+**This package is build and tested on python 3.10.x**
 
 ### Windows
 
