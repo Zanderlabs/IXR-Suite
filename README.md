@@ -1,6 +1,6 @@
-# Z-suite-mini
+# IXR Suite
 
-Mini version of the upcoming Zanderlabs software suite to be used primarily in VR applications.**This package is build and tested on python 3.10.x**
+Middleware between physiological hardware and primarily VR applications.**This package is build and tested on python 3.10.x**
 
 ## Dependencies
 
