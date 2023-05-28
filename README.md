@@ -4,7 +4,9 @@ The IXR Suite is a middleware between physiological hardware and virtual environ
 
 ## How-to guide
 
-See [this slidedeck](https://docs.google.com/presentation/d/1aDD0TuLVqdQ3OrO-flbkxTzb2gyvidsCp46c-4gSyvE) for a simple guide on how to install and run the software on windows with VS Code.
+If you just want to run the IXR Suite and not develop anything, you can download the latest version on the [release page](https://github.com/Zanderlabs/IXR-Suite/releases).
+
+See [this slidedeck](https://docs.google.com/presentation/d/1aDD0TuLVqdQ3OrO-flbkxTzb2gyvidsCp46c-4gSyvE) for a simple guide on how to install and run the software on Windows with VS Code if you want to contribute to development.
 
 ## Dependencies
 
