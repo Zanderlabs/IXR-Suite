@@ -65,7 +65,7 @@ class IXRDashboard(Thread):
         self.eeg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.eeg_preset)
         self.gyro_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.gyro_preset)
         self.ppg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.ppg_preset)
-        self.update_speed_ms = 100
+        self.update_speed_ms = 40
         self.plot_window_s = 10  # should always be bigger then power_metric_window_ms
         self.power_metric_window_s = 1.5  # should always be bigger then psd size
         self.psd_size = DataFilter.get_nearest_power_of_two(self.eeg_sampling_rate)

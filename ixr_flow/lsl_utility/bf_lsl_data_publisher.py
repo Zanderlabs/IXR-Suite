@@ -57,7 +57,7 @@ class BfLslDataPublisher(Thread):
                 if self.push_full_vec else len(self.channels[data_type])
 
             logging.info(f"Starting '{name}' LSL Data Publisher stream.")
-            info_data = StreamInfo(name=name, type=data_type, channel_count=channel_count, nominal_srate=rate,
+            info_data = StreamInfo(name=name, type=data_type.upper(), channel_count=channel_count, nominal_srate=rate,
                                    channel_format=cf_double64, source_id='ixr-flow-lsl-data-publisher')
             stream_channels = info_data.desc().append_child("channels")
             for _, label in self.channels[data_type].items():

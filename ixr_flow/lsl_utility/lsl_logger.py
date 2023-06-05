@@ -12,7 +12,7 @@ class LslLogger(StreamHandler):
     :type stype: str, optional
     """
 
-    def __init__(self, name: str = 'lsl_logger', stype: str = 'log') -> None:
+    def __init__(self, name: str = 'lsl_logger', stype: str = 'Markers') -> None:
         StreamHandler.__init__(self)
         self.outlet = StreamOutlet(StreamInfo(name=name, type=stype, channel_count=1,
                                    channel_format='string', source_id='ixr-flow-lsl-logger'))
