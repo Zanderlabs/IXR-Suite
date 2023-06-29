@@ -36,11 +36,18 @@ class BfLslDataPublisher(Thread):
         self.board_shim = board_shim
         self.board_id = board_shim.get_board_id()
         self.push_full_vec = push_full_vec
-        self.data_types = {
+        all_presets = BoardShim.get_board_presets(self.board_id)
+        presets = {
             'eeg': BrainFlowPresets.DEFAULT_PRESET,
             'gyro': BrainFlowPresets.AUXILIARY_PRESET,
             'ppg': BrainFlowPresets.ANCILLARY_PRESET,
         }
+        self.data_types = {}  # Initialize the dictionary
+        for data_type, preset in presets.items():
+            if preset in all_presets:
+                description = BoardShim.get_board_descr(self.board_id, preset)
+                if (data_type + "_channels") in description:
+                    self.data_types[data_type] = preset
         self.channels = {k: self.get_channels(v) for k, v in self.data_types.items()}
         self.outlets = {}
         self.previous_timestamp = {'eeg': 0, 'gyro': 0, 'ppg': 0}
