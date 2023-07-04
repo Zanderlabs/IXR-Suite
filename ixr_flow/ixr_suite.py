@@ -31,7 +31,7 @@ class IXRSuite():
         titleLabel["font"] = ft
         titleLabel["fg"] = "#168aad"
         titleLabel["justify"] = "center"
-        titleLabel["text"] = "Intuitive XR Suite v0.3"
+        titleLabel["text"] = "Intuitive XR Suite v0.4"
         titleLabel.place(x=0, y=20, width=400, height=25)
 
         # create input boxes

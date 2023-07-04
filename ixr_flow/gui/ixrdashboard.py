@@ -216,7 +216,7 @@ class IXRDashboard(Thread):
                 self.all_time_series += 1
 
     def _init_psd(self) -> None:
-        self.psd_plot = self.win.addPlot(row=0, col=1, rowspan=np.max([1,int(0.5*self.all_time_series)]))
+        self.psd_plot = self.win.addPlot(row=0, col=1, rowspan=np.max([1,round(0.4*self.all_time_series)]))
         self.psd_plot.showAxis('left', False)
         self.psd_plot.setMenuEnabled('left', False)
         self.psd_plot.setTitle('spectral power')
@@ -230,7 +230,7 @@ class IXRDashboard(Thread):
             self.psd_curves.append(psd_curve)
 
     def _init_band_plot(self) -> None:
-        self.band_plot = self.win.addPlot(row=np.max([1,int(0.5*self.all_time_series)]), col=1, rowspan=np.max([1,int(0.2*self.all_time_series)]))
+        self.band_plot = self.win.addPlot(row=np.max([1,round(0.4*self.all_time_series)]), col=1, rowspan=np.max([1,round(0.3*self.all_time_series)]))
         self.band_plot.showAxis('left', False)
         self.band_plot.setMenuEnabled('left', False)
         self.band_plot.showAxis('bottom', True)
@@ -248,7 +248,7 @@ class IXRDashboard(Thread):
         ay.setTicks([tickdict.items()])
 
     def _init_brain_power_plot(self) -> None:
-        self.power_plot = self.win.addPlot(row=np.max([1,int(0.5*self.all_time_series)])+np.max([1,int(0.2*self.all_time_series)]), col=1, rowspan=np.max([1,int(0.3*self.all_time_series)]))
+        self.power_plot = self.win.addPlot(row=np.max([1,round(0.4*self.all_time_series)])+np.max([1,round(0.3*self.all_time_series)]), col=1, rowspan=np.max([1,round(0.3*self.all_time_series)]))
         self.power_plot.setTitle('final focus metric')
 
         self.power_plot.showAxis('left', True)
