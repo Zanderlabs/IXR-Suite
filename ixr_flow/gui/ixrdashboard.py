@@ -106,10 +106,17 @@ class IXRDashboard(Thread):
         # LSL stream
         name = 'BrainPower'
         logging.info(f"Starting '{name}' Power Metric stream.")
-        info_transmit = StreamInfo(name=name, type='IXR-metric', channel_count=1,
+        info_transmit = StreamInfo(name=name, type='IXR-metric', channel_count=1, nominal_srate=20.0,
                                    channel_format=cf_double64, source_id='ixrflow_transmit_power')
         self.outlet_transmit = StreamOutlet(info_transmit)
         logging.info(f"'{self.outlet_transmit.get_info().name()}' Power Metric stream started.")
+
+        name = 'SpectralPower'
+        logging.info(f"Starting '{name}' stream.")
+        info_transmit_spectrum = StreamInfo(name=name, type='IXR-metric', channel_count=5, nominal_srate=20.0,
+                                   channel_format=cf_double64, source_id='ixrflow_transmit_spectral_power')
+        self.outlet_transmit_spectrum = StreamOutlet(info_transmit_spectrum)
+        logging.info(f"'{self.outlet_transmit_spectrum.get_info().name()}' Power Metric stream started.")
 
     def run(self):
         self.app = QtGui.QApplication([])
@@ -459,8 +466,6 @@ class IXRDashboard(Thread):
                 engagement_idx += (beta / (theta + alpha)) / gamma # divided by gamma to reduce power also during strong muscle activity
                 inverse_workload_idx += (alpha / theta) / gamma
 
-        avg_bands = [int(x / len(self.eeg_channels)) for x in avg_bands]  # average bands were just sums
-
         if len(bad_channels)!=4:
             engagement_idx = engagement_idx / (4-len(bad_channels))
             inverse_workload_idx = inverse_workload_idx / (4-len(bad_channels))
@@ -468,9 +473,12 @@ class IXRDashboard(Thread):
             # only use valid scores to scale and calibrate
             self.engagement_calib.append(engagement_idx)
             self.inverse_workload_calib.append(inverse_workload_idx)
+
+            avg_bands = [x / (4-len(bad_channels)) for x in avg_bands]  # average bands were just sums
         else:
             engagement_idx = 0
             inverse_workload_idx = 0
+            avg_bands = [0,0,0,0,0]
         
         # limit lengths of history and calib
         if len(self.engagement_calib) > self.calib_length:
@@ -527,5 +535,6 @@ class IXRDashboard(Thread):
 
         #print(self.power_metrics[0])
         self.outlet_transmit.push_sample([self.power_metrics[0]])
+        self.outlet_transmit_spectrum.push_sample(avg_bands)
 
         self.app.processEvents()
