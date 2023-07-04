@@ -77,7 +77,7 @@ class IXRSuite():
         boardidLabel["justify"] = "center"
         boardidLabel["text"] = "board ID"
         boardidLabel.place(x=40, y=80, width=200, height=25)
-        self.CreateToolTip(boardidLabel, text='Muse 2 is 38, Muse S is 39 (default = 39)')
+        self.CreateToolTip(boardidLabel, text='Muse 2 is 38, Muse S is 39, Muse 2016 is 41, BrainBit is 7 (default = 39)')
 
     def create_timeout_input(self, root):
         self.timeoutEnt = tk.Entry(root)

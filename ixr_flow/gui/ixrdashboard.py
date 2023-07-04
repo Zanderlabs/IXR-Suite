@@ -42,7 +42,7 @@ class IXRDashboard(Thread):
     :type thread_daemon: bool, optional
     """
 
-    def __init__(self, board_shim: BoardShim, reference: str = 'mean', display_ref: bool = False,
+    def __init__(self, board_shim: BoardShim, reference: str = 'none', display_ref: bool = False,
                  thread_name: str = "thread_graph", thread_daemon: bool = False) -> None:
         Thread.__init__(self, name=thread_name, daemon=thread_daemon)
         self.board_shim = board_shim
@@ -53,22 +53,42 @@ class IXRDashboard(Thread):
         pg.setConfigOption('background', '#264653')
         pg.setConfigOption('foreground', '#e9f5db')
 
-        self.eeg_preset = BrainFlowPresets.DEFAULT_PRESET
-        self.gyro_preset = BrainFlowPresets.AUXILIARY_PRESET
-        self.ppg_preset = BrainFlowPresets.ANCILLARY_PRESET
+        # Get available presets for the specific board
+        self.available_presets = BoardShim.get_board_presets(self.board_id)
 
-        eeg_description = BoardShim.get_board_descr(self.board_id, self.eeg_preset)
-        self.eeg_channels = [Channel(ch_number, eeg_description['eeg_names'].split(',')[i], False, True)
-                             for i, ch_number in enumerate(eeg_description['eeg_channels'])]
-        self.eeg_channels += [Channel(ch_number, 'Fpz', True, self.display_ref)
-                              for ch_number in eeg_description['other_channels']]
-        self.gyro_channels = BoardShim.get_gyro_channels(self.board_id, self.gyro_preset)
-        self.ppg_channels = BoardShim.get_ppg_channels(self.board_id, self.ppg_preset)
-        self.eeg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.eeg_preset)
-        self.gyro_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.gyro_preset)
-        self.ppg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.ppg_preset)
-        self.update_speed_ms = 100
-        self.plot_window_s = 20  # should always be bigger then power_metric_window_ms
+        if BrainFlowPresets.DEFAULT_PRESET in self.available_presets:
+            self.eeg_preset = BrainFlowPresets.DEFAULT_PRESET
+            eeg_description = BoardShim.get_board_descr(self.board_id, self.eeg_preset)
+            logging.info(f"EEG description: {eeg_description}")
+            self.eeg_channels = [Channel(ch_number, eeg_description['eeg_names'].split(',')[i], False, True)
+                                for i, ch_number in enumerate(eeg_description['eeg_channels'])]
+            if 'other_channels' in eeg_description:
+                self.eeg_channels += [Channel(ch_number, 'Fpz', True, self.display_ref)
+                                    for ch_number in eeg_description['other_channels']]
+            self.eeg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.eeg_preset)
+            
+        
+        if BrainFlowPresets.AUXILIARY_PRESET in self.available_presets:
+            self.gyro_preset = BrainFlowPresets.AUXILIARY_PRESET
+            gyro_description = BoardShim.get_board_descr(self.board_id, self.gyro_preset)
+            logging.info(f"Gyro description: {gyro_description}")
+            if 'gyro_channels' in gyro_description:
+                self.gyro_channels = [Channel(ch_number, "gyro " + str(i+1), False, True)
+                                for i, ch_number in enumerate(gyro_description['gyro_channels'])]
+            self.gyro_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.gyro_preset)
+
+        if BrainFlowPresets.ANCILLARY_PRESET in self.available_presets:
+            self.ppg_preset = BrainFlowPresets.ANCILLARY_PRESET
+            ppg_description = BoardShim.get_board_descr(self.board_id, self.ppg_preset)
+            logging.info(f"PPG description: {ppg_description}")
+            if 'ppg_channels' in ppg_description:
+                self.ppg_channels = [Channel(ch_number, "ppg " + str(i+1), False, True)
+                                for i, ch_number in enumerate(ppg_description['ppg_channels'])]
+            self.ppg_sampling_rate = BoardShim.get_sampling_rate(self.board_id, self.ppg_preset)
+
+        self.update_speed_ms = 40
+        self.plot_window_s = 12  # should always be bigger then power_metric_window_ms
+        
         self.power_metric_window_s = 1.5  # should always be bigger then psd size
         self.psd_size = DataFilter.get_nearest_power_of_two(self.eeg_sampling_rate)
 
@@ -141,51 +161,62 @@ class IXRDashboard(Thread):
         self.plots = list()
         self.curves = list()
 
-        display_eeg_channels = [ch.name for ch in self.eeg_channels if ch.display]
 
-        for i, channel_name in enumerate(display_eeg_channels):
-            p = self.win.addPlot(row=i, col=0)
-            p.setMenuEnabled('left', False)
-            p.showAxis('bottom', False)
-            p.setMenuEnabled('bottom', False)
-            p.setYRange(-150, 150, padding=0)
-            p.showAxis('left', False)
-            p.setTitle(channel_name)
-            self.plots.append(p)
-            curve = p.plot(pen=self.pens[i % len(self.pens)])
-            # curve.setDownsampling(auto=True, method='mean', ds=3)
-            self.curves.append(curve)
+        self.all_time_series = 0
 
-        axeslabels_gyro = ['gyro 1', 'gyro 2', 'gyro 3']
-        for i in range(len(self.gyro_channels)):
-            p = self.win.addPlot(row=i + len(display_eeg_channels), col=0)
-            p.setMenuEnabled('left', False)
-            p.showAxis('bottom', False)
-            p.setMenuEnabled('bottom', False)
-            p.setYRange(-250, 250, padding=0)
-            p.showAxis('left', False)
-            p.setTitle(axeslabels_gyro[i])
-            self.plots.append(p)
-            curve = p.plot(pen=self.pens[i % len(self.pens)])
-            
-            # curve.setDownsampling(auto=True, method='mean', ds=3)
-            self.curves.append(curve)
+        if hasattr(self, 'eeg_channels'):
+            display_eeg_channels = [ch.name for ch in self.eeg_channels if ch.display]
 
-        axeslabels_ppg = ['heart']
-        p = self.win.addPlot(row=1 + len(display_eeg_channels) + len(self.gyro_channels), col=0)
-        p.setMenuEnabled('left', False)
-        p.showAxis('bottom', False)
-        p.setMenuEnabled('bottom', False)
-        p.setYRange(-1500, 2000, padding=0)
-        p.showAxis('left', False)
-        p.setTitle(axeslabels_ppg[0])
-        self.plots.append(p)
-        curve = p.plot(pen=self.pens[3])
-        # curve.setDownsampling(auto=True, method='mean', ds=3)
-        self.curves.append(curve)
+            for i, channel_name in enumerate(display_eeg_channels):
+                p = self.win.addPlot(row=i, col=0)
+                p.setMenuEnabled('left', False)
+                p.showAxis('bottom', False)
+                p.setMenuEnabled('bottom', False)
+                p.setYRange(-150, 150, padding=0)
+                p.showAxis('left', False)
+                p.setTitle(channel_name)
+                self.plots.append(p)
+                curve = p.plot(pen=self.pens[i % len(self.pens)])
+                # curve.setDownsampling(auto=True, method='mean', ds=3)
+                self.curves.append(curve)
+                self.all_time_series += 1
+
+        if hasattr(self, 'gyro_channels'):
+            display_gyro_channels = [ch.name for ch in self.gyro_channels if ch.display]
+
+            for i, channel_name in enumerate(display_gyro_channels):
+                p = self.win.addPlot(row=i + len(display_eeg_channels), col=0)
+                p.setMenuEnabled('left', False)
+                p.showAxis('bottom', False)
+                p.setMenuEnabled('bottom', False)
+                p.setYRange(-200, 200, padding=0)
+                p.showAxis('left', False)
+                p.setTitle(channel_name)
+                self.plots.append(p)
+                curve = p.plot(pen=self.pens[i % len(self.pens)])
+                # curve.setDownsampling(auto=True, method='mean', ds=3)
+                self.curves.append(curve)
+                self.all_time_series += 1
+
+        if hasattr(self, 'ppg_channels'):
+            display_ppg_channels = [ch.name for ch in self.ppg_channels if ch.display]
+
+            for i, channel_name in enumerate(display_ppg_channels):
+                p = self.win.addPlot(row=i + len(display_eeg_channels) + len(self.gyro_channels), col=0)
+                p.setMenuEnabled('left', False)
+                p.showAxis('bottom', False)
+                p.setMenuEnabled('bottom', False)
+                #p.setYRange(-1500, 2000, padding=0)
+                p.showAxis('left', False)
+                p.setTitle(channel_name)
+                self.plots.append(p)
+                curve = p.plot(pen=self.pens[i % len(self.pens)])
+                # curve.setDownsampling(auto=True, method='mean', ds=3)
+                self.curves.append(curve)
+                self.all_time_series += 1
 
     def _init_psd(self) -> None:
-        self.psd_plot = self.win.addPlot(row=0, col=1, rowspan=4)
+        self.psd_plot = self.win.addPlot(row=0, col=1, rowspan=np.max([1,int(0.5*self.all_time_series)]))
         self.psd_plot.showAxis('left', False)
         self.psd_plot.setMenuEnabled('left', False)
         self.psd_plot.setTitle('spectral power')
@@ -199,7 +230,7 @@ class IXRDashboard(Thread):
             self.psd_curves.append(psd_curve)
 
     def _init_band_plot(self) -> None:
-        self.band_plot = self.win.addPlot(row=4, col=1, rowspan=2)
+        self.band_plot = self.win.addPlot(row=np.max([1,int(0.5*self.all_time_series)]), col=1, rowspan=np.max([1,int(0.2*self.all_time_series)]))
         self.band_plot.showAxis('left', False)
         self.band_plot.setMenuEnabled('left', False)
         self.band_plot.showAxis('bottom', True)
@@ -217,10 +248,10 @@ class IXRDashboard(Thread):
         ay.setTicks([tickdict.items()])
 
     def _init_brain_power_plot(self) -> None:
-        self.power_plot = self.win.addPlot(row=6, col=1, rowspan=3)
+        self.power_plot = self.win.addPlot(row=np.max([1,int(0.5*self.all_time_series)])+np.max([1,int(0.2*self.all_time_series)]), col=1, rowspan=np.max([1,int(0.3*self.all_time_series)]))
         self.power_plot.setTitle('final brain power')
 
-        self.power_plot.showAxis('left', False)
+        self.power_plot.showAxis('left', True)
         self.power_plot.setMenuEnabled('left', False)
         self.power_plot.showAxis('bottom', True)
         self.power_plot.setMenuEnabled('bottom', False)
@@ -236,30 +267,61 @@ class IXRDashboard(Thread):
         ay.setTicks([tickdict.items()])
 
     def _update(self) -> None:
+        
         if not self.board_shim.is_prepared():
             # if no connection is established, abort this method.
             return
 
-        try:
-            eeg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.eeg_sampling_rate),
-                                                              self.eeg_preset)
-            gyro_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.gyro_sampling_rate),
-                                                               self.gyro_preset)[self.gyro_channels, :]
-            # Only pick the first of the PPG channels, which is channel 1 (zero indexed) of the board data array
-            ppg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.ppg_sampling_rate),
-                                                              self.ppg_preset)[self.ppg_channels[0], :]
-        except BrainFlowError as e:
-            # Right after board preparation the Brainflow connection might be a bit unstable.
-            # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
-            # If the case, abort method and try again later, but re-raise other exceptions.
-            if e.exit_code == BrainFlowExitCodes.INVALID_ARGUMENTS_ERROR:
-                return
-            else:
-                raise e
+        if hasattr(self, 'eeg_channels'):
 
-        # Brainflow might still return empty arrays, abort method and try again later, if the case.
-        if len(eeg_data) < 1 or len(gyro_data) < 1 or len(ppg_data) < 1:
-            return
+            try:
+                eeg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.eeg_sampling_rate),
+                                                                self.eeg_preset)
+            except BrainFlowError as e:
+                # Right after board preparation the Brainflow connection might be a bit unstable.
+                # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
+                # If the case, abort method and try again later, but re-raise other exceptions.
+                if e.exit_code == BrainFlowExitCodes.INVALID_ARGUMENTS_ERROR:
+                    return
+                else:
+                    raise e
+                
+            if len(eeg_data) < 1:
+                return
+                
+        if hasattr(self, 'gyro_channels'):
+
+            try:
+                gyro_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.gyro_sampling_rate),
+                                                                self.gyro_preset)
+            except BrainFlowError as e:
+                # Right after board preparation the Brainflow connection might be a bit unstable.
+                # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
+                # If the case, abort method and try again later, but re-raise other exceptions.
+                if e.exit_code == BrainFlowExitCodes.INVALID_ARGUMENTS_ERROR:
+                    return
+                else:
+                    raise e
+                
+            if len(gyro_data) < 1:
+                return
+        
+        if hasattr(self, 'ppg_channels'):
+
+            try:
+                ppg_data = self.board_shim.get_current_board_data(int(self.plot_window_s * self.ppg_sampling_rate),
+                                                                self.ppg_preset)
+            except BrainFlowError as e:
+                # Right after board preparation the Brainflow connection might be a bit unstable.
+                # In that case Brainflow throws an INVALID_ARGUMENTS_ERROR exception.
+                # If the case, abort method and try again later, but re-raise other exceptions.
+                if e.exit_code == BrainFlowExitCodes.INVALID_ARGUMENTS_ERROR:
+                    return
+                else:
+                    raise e
+                
+            if len(ppg_data) < 1:
+                return
         
         # Perform bad channel detection
         bad_channels = []
@@ -310,7 +372,7 @@ class IXRDashboard(Thread):
         #eeg_data = eeg_data[good_channel_indices]
         #print(len(eeg_data))
 
-        # rereference
+        # rereference EEG
         if self.reference == 'mean':
             mean_channels = np.mean(eeg_data[[ch.ch_number for ch in self.eeg_channels if not ch.reference]], axis=0)
             eeg_data[[ch.ch_number for ch in self.eeg_channels if not ch.reference]] -= mean_channels
@@ -320,18 +382,29 @@ class IXRDashboard(Thread):
             eeg_data[[ch.ch_number for ch in self.eeg_channels if not ch.reference]] -= mean_reference_channels
 
         # add gyro data to curves, leave first few curves for eeg data.
-        num_display_ch = len([ch for ch in self.eeg_channels if ch.display])
-        for count, _ in enumerate(self.gyro_channels):
-            self.curves[num_display_ch + count].setData(gyro_data[count].tolist())
-        head_movement = np.clip(np.mean(np.abs(gyro_data[:][-int(
+        if hasattr(self, 'gyro_channels'):
+            num_display_ch = len([ch for ch in self.eeg_channels if ch.display])
+            gyro_channel_numbers = [channel.ch_number for channel in self.gyro_channels]
+            for count, _ in enumerate(self.gyro_channels):
+                self.curves[num_display_ch + count].setData(gyro_data[gyro_channel_numbers[count]][self.gyro_sampling_rate*2:].tolist())
+            head_movement = np.clip(np.mean(np.abs(gyro_data[:][-int(
                 self.power_metric_window_s * self.gyro_sampling_rate):])) / 50, 0, 1)
+        else:
+            head_movement = 0
+            
         #  power_metrics[2] = head_movement
 
         # ppg: filter and add ppg to curves, again at the appropriate index.
-        DataFilter.detrend(ppg_data, DetrendOperations.CONSTANT.value)
-        DataFilter.perform_bandpass(data=ppg_data, sampling_rate=self.ppg_sampling_rate, start_freq=0.8,
-                                    stop_freq=4.0, order=4, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
-        self.curves[num_display_ch + gyro_data.shape[0]].setData(ppg_data.tolist())
+        if hasattr(self, 'ppg_channels'):
+            num_display_ch = len([ch for ch in self.eeg_channels if ch.display]) + len([ch for ch in self.gyro_channels if ch.display])
+            for count, ppg_channel in enumerate([ch for ch in self.ppg_channels if ch.display]):
+                datanew = ppg_data[ppg_channel.ch_number]
+                if np.any(datanew != 0):
+                    datanew = datanew - np.mean(datanew)
+                    DataFilter.detrend(datanew, DetrendOperations.CONSTANT.value)
+                    DataFilter.perform_bandpass(data=datanew, sampling_rate=self.ppg_sampling_rate, start_freq=0.8,
+                                                stop_freq=4.0, order=4, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
+                self.curves[num_display_ch + count].setData(datanew[self.ppg_sampling_rate*2:].tolist())
 
         # eeg processing
         avg_bands = [0, 0, 0, 0, 0]
@@ -348,9 +421,9 @@ class IXRDashboard(Thread):
             # plot timeseries
             colors = ['#e9c46a', '#f4a261', '#e76f51', '#d62828']
             if eeg_channel in bad_channels:
-                self.curves[graph_number].setData(eeg_data[eeg_channel.ch_number].tolist(), pen='w')
+                self.curves[graph_number].setData(eeg_data[eeg_channel.ch_number][self.eeg_sampling_rate*2:].tolist(), pen='w')
             else:
-                self.curves[graph_number].setData(eeg_data[eeg_channel.ch_number].tolist(), pen=colors[graph_number]) 
+                self.curves[graph_number].setData(eeg_data[eeg_channel.ch_number][self.eeg_sampling_rate*2:].tolist(), pen=colors[graph_number]) 
 
             # take/slice the last samples of eeg_data that fall within the power metric window
             eeg_data_pm_sliced = eeg_data[eeg_channel.ch_number][-int(
