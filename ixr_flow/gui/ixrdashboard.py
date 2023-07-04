@@ -9,6 +9,8 @@ from brainflow import (BoardShim, BrainFlowError, BrainFlowExitCodes,
                        FilterTypes, WindowOperations)
 from pylsl import StreamInfo, StreamOutlet, cf_double64
 from pyqtgraph.Qt import QtCore, QtGui
+from scipy import signal
+from scipy.signal import welch # implement
 
 
 @dataclass
@@ -86,6 +88,7 @@ class IXRDashboard(Thread):
 
         self.update_speed_ms = 40
         self.plot_window_s = 12  # should always be bigger then power_metric_window_ms
+        
         self.power_metric_window_s = 1.5  # should always be bigger then psd size
         self.psd_size = DataFilter.get_nearest_power_of_two(self.eeg_sampling_rate)
 
@@ -157,6 +160,7 @@ class IXRDashboard(Thread):
     def _init_timeseries(self) -> None:
         self.plots = list()
         self.curves = list()
+
 
         self.all_time_series = 0
 
@@ -318,6 +322,55 @@ class IXRDashboard(Thread):
                 
             if len(ppg_data) < 1:
                 return
+        
+        # Perform bad channel detection
+        bad_channels = []
+        for eeg_channel in self.eeg_channels:
+            if eeg_channel.reference:
+                continue  # Skip reference channels
+            channel_data = eeg_data[eeg_channel.ch_number][-int(
+                self.power_metric_window_s * self.eeg_sampling_rate):]
+
+            # Apply bad channel detection criteria (example: detect channels with high variance)
+
+            #print('Detecting bad channel using line power ratio')
+            # Square channel_data
+            # channel_data_squared = np.square(channel_data)
+
+            # Calculate power spectral density using welch
+            freq, psd = signal.welch(channel_data, fs=self.eeg_sampling_rate)             
+
+            # Calculate line power ratio
+            line_power_ratio = 0.001 * (np.mean(psd[(freq > 45) & (freq < 55)]) + np.mean(psd[(freq > 95) & (freq < 105)])) / (np.mean(psd[(freq > 20) & (freq < 40)]) + np.mean(psd[(freq > 70) & (freq < 90)]))
+
+            #variance = np.var(channel_data_squared) / (500000 ** 2)
+            threshold_lpr = 0.0003 # 0.01
+            
+           # if line_power_ratio > threshold_lpr:
+               # print('bad channel',line_power_ratio,threshold_lpr)
+    
+            #else:
+                #print('good channel',line_power_ratio,threshold_lpr)
+
+            # Apply bad channel detection criteria (example: detect channels with high variance)
+         #   print('Detecting bad channel with high variance')
+            threshold = 0.04
+
+            variance = (np.var(channel_data))/500000
+        #    print('channel variance:', variance, 'threshold:', threshold, 'channel',eeg_channel.ch_number)
+
+            if variance > threshold:
+                bad_channels.append(eeg_channel)
+
+      #  print('Number of bad chanels:', len(bad_channels))
+
+        # Remove bad channels
+        #good_channels = [ch for ch in self.eeg_channels if ch not in bad_channels]
+        #good_channel_indices = [ch.ch_number for ch in good_channels]
+
+        # Remove bad channels from eeg_data
+        #eeg_data = eeg_data[good_channel_indices]
+        #print(len(eeg_data))
 
         # rereference EEG
         if self.reference == 'mean':
@@ -334,9 +387,11 @@ class IXRDashboard(Thread):
             gyro_channel_numbers = [channel.ch_number for channel in self.gyro_channels]
             for count, _ in enumerate(self.gyro_channels):
                 self.curves[num_display_ch + count].setData(gyro_data[gyro_channel_numbers[count]][self.gyro_sampling_rate*2:].tolist())
-            head_movement = np.clip(np.mean(np.abs(gyro_data)) / 50, 0, 1)
+            head_movement = np.clip(np.mean(np.abs(gyro_data[:][-int(
+                self.power_metric_window_s * self.gyro_sampling_rate):])) / 50, 0, 1)
         else:
             head_movement = 0
+            
         #  power_metrics[2] = head_movement
 
         # ppg: filter and add ppg to curves, again at the appropriate index.
@@ -355,7 +410,7 @@ class IXRDashboard(Thread):
         avg_bands = [0, 0, 0, 0, 0]
         frontal_theta = 1
         parietal_alpha = 1
-        engagement_idx = 1
+        engagement_idx = 0
 
         for graph_number, eeg_channel in enumerate([ch for ch in self.eeg_channels if ch.display]):
             DataFilter.detrend(eeg_data[eeg_channel.ch_number], DetrendOperations.CONSTANT.value)
@@ -364,7 +419,11 @@ class IXRDashboard(Thread):
             DataFilter.perform_bandstop(data=eeg_data[eeg_channel.ch_number], sampling_rate=self.eeg_sampling_rate, start_freq=48.0,
                                         stop_freq=52.0, order=2, filter_type=FilterTypes.BUTTERWORTH.value, ripple=0.0)
             # plot timeseries
-            self.curves[graph_number].setData(eeg_data[eeg_channel.ch_number][self.eeg_sampling_rate*2:].tolist())
+            colors = ['#e9c46a', '#f4a261', '#e76f51', '#d62828']
+            if eeg_channel in bad_channels:
+                self.curves[graph_number].setData(eeg_data[eeg_channel.ch_number][self.eeg_sampling_rate*2:].tolist(), pen='w')
+            else:
+                self.curves[graph_number].setData(eeg_data[eeg_channel.ch_number][self.eeg_sampling_rate*2:].tolist(), pen=colors[graph_number]) 
 
             # take/slice the last samples of eeg_data that fall within the power metric window
             eeg_data_pm_sliced = eeg_data[eeg_channel.ch_number][-int(
@@ -379,6 +438,7 @@ class IXRDashboard(Thread):
                                                     overlap=self.psd_size // 2,
                                                     sampling_rate=self.eeg_sampling_rate,
                                                     window=WindowOperations.BLACKMAN_HARRIS.value)
+
                 lim = min(48, len(psd_data[0]))
                 self.psd_curves[graph_number].setData(psd_data[1][0:lim].tolist(), psd_data[0][0:lim].tolist())
                 # compute bands
@@ -394,7 +454,10 @@ class IXRDashboard(Thread):
                 avg_bands[4] = avg_bands[4] + gamma
 
                 # compute selfmade brain metrics
-                engagement_idx += (beta / (theta + alpha)) / gamma
+                if eeg_channel in bad_channels:
+                    continue
+                else:
+                    engagement_idx += (beta / (theta + alpha)) / gamma
 
                 if 'Fp' in eeg_channel.name:
                     frontal_theta += theta / gamma
@@ -403,7 +466,24 @@ class IXRDashboard(Thread):
 
         avg_bands = [int(x / len(self.eeg_channels)) for x in avg_bands]  # average bands were just sums
 
-        engagement_idx = engagement_idx / 4
+        #frontal_channels = []
+        #parietal_channels = []
+
+        #for a in good_channels:
+            #channels = eeg_channel.name
+
+            # Check if the channel name indicates a frontal or parietal location
+            #if 'Fp' in channels:
+                #frontal_channels.append(eeg_channel)
+            #elif 'TP' in channels:
+                #parietal_channels.append(eeg_channel)
+
+        if len(bad_channels)!=4:
+            engagement_idx = engagement_idx / (4-len(bad_channels))
+        else:
+            engagement_idx = 0
+        
+        print(engagement_idx)
         parietal_alpha = parietal_alpha / 2
         frontal_theta = frontal_theta / 2
 
