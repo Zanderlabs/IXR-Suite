@@ -9,8 +9,8 @@ from brainflow import (BoardShim, BrainFlowError, BrainFlowExitCodes,
                        FilterTypes, WindowOperations)
 from pylsl import StreamInfo, StreamOutlet, cf_double64
 from pyqtgraph.Qt import QtCore, QtGui
-from scipy import signal
 from scipy.signal import welch # implement
+from scipy.signal import butter, filtfilt
 
 
 @dataclass
@@ -222,7 +222,7 @@ class IXRDashboard(Thread):
         self.psd_plot.setTitle('spectral power')
         self.psd_plot.setLogMode(False, True)
         self.psd_plot.setLabel('bottom', 'frequency (Hz)')
-        self.psd_plot.setXRange(0, 50, padding=0)
+        self.psd_plot.setXRange(1, 60, padding=0)
         self.psd_curves = list()
         for i in range(len(self.eeg_channels)):
             psd_curve = self.psd_plot.plot(pen=self.pens[i % len(self.pens)])
@@ -249,7 +249,7 @@ class IXRDashboard(Thread):
 
     def _init_brain_power_plot(self) -> None:
         self.power_plot = self.win.addPlot(row=np.max([1,int(0.5*self.all_time_series)])+np.max([1,int(0.2*self.all_time_series)]), col=1, rowspan=np.max([1,int(0.3*self.all_time_series)]))
-        self.power_plot.setTitle('final brain power')
+        self.power_plot.setTitle('final focus metric')
 
         self.power_plot.showAxis('left', True)
         self.power_plot.setMenuEnabled('left', False)
@@ -286,7 +286,7 @@ class IXRDashboard(Thread):
                 else:
                     raise e
                 
-            if len(eeg_data) < 1:
+            if len(eeg_data) < 1 or eeg_data.shape[1] < 2*self.eeg_sampling_rate:
                 return
                 
         if hasattr(self, 'gyro_channels'):
@@ -325,52 +325,55 @@ class IXRDashboard(Thread):
         
         # Perform bad channel detection
         bad_channels = []
+
+        # Define a high pass filter
+        def highpass(data, fs, cutoff):
+            nyq = 0.5 * fs
+            normal_cutoff = cutoff / nyq
+            b, a = butter(1, normal_cutoff, btype='high', analog=False)
+            y = filtfilt(b, a, data)
+            return y
+        
+        # Define a low pass filter
+        def lowpass(data, fs, cutoff):
+            nyq = 0.5 * fs
+            normal_cutoff = cutoff / nyq
+            b, a = butter(1, normal_cutoff, btype='low', analog=False)
+            y = filtfilt(b, a, data)
+            return y
+
+        # Loop through EEG channels
         for eeg_channel in self.eeg_channels:
             if eeg_channel.reference:
                 continue  # Skip reference channels
             channel_data = eeg_data[eeg_channel.ch_number][-int(
                 self.power_metric_window_s * self.eeg_sampling_rate):]
 
-            # Apply bad channel detection criteria (example: detect channels with high variance)
-
-            #print('Detecting bad channel using line power ratio')
-            # Square channel_data
-            # channel_data_squared = np.square(channel_data)
-
             # Calculate power spectral density using welch
-            freq, psd = signal.welch(channel_data, fs=self.eeg_sampling_rate)             
+            freq, psd = welch(channel_data, fs=self.eeg_sampling_rate) 
 
-            # Calculate line power ratio
-            line_power_ratio = 0.001 * (np.mean(psd[(freq > 45) & (freq < 55)]) + np.mean(psd[(freq > 95) & (freq < 105)])) / (np.mean(psd[(freq > 20) & (freq < 40)]) + np.mean(psd[(freq > 70) & (freq < 90)]))
+            # Calculate line power
+            pow_line = np.mean(psd[(freq > 45) & (freq < 55)])
+            #print("channel " + str(eeg_channel.ch_number) + ", pow_line: " + str(pow_line))
+            threshold_pow_line = 500
 
-            #variance = np.var(channel_data_squared) / (500000 ** 2)
-            threshold_lpr = 0.0003 # 0.01
-            
-           # if line_power_ratio > threshold_lpr:
-               # print('bad channel',line_power_ratio,threshold_lpr)
-    
-            #else:
-                #print('good channel',line_power_ratio,threshold_lpr)
+            # Applying the high pass filter to remove eye movement data from this check
+            filtered_data = highpass(channel_data, self.eeg_sampling_rate, 15)
 
-            # Apply bad channel detection criteria (example: detect channels with high variance)
-         #   print('Detecting bad channel with high variance')
-            threshold = 0.04
+            # Applying the low pass filter to remove line noise from this check
+            filtered_data = lowpass(filtered_data, self.eeg_sampling_rate, 45)
 
-            variance = (np.var(channel_data))/500000
-        #    print('channel variance:', variance, 'threshold:', threshold, 'channel',eeg_channel.ch_number)
+            # Checking the range of the filtered signal
+            amplitude_range = np.ptp(filtered_data) # peak to peak amplitude (max - min)
 
-            if variance > threshold:
+            #print("channel " + str(eeg_channel.ch_number) + ", amplitude_range: " + str(amplitude_range))
+
+            # Define a threshold for the amplitude range
+            threshold_amplitude = 350 # this value can be adjusted based on your specific requirements
+
+            # If either line power exceeds threshold or amplitude range exceeds threshold, append to bad channels
+            if pow_line > threshold_pow_line or amplitude_range > threshold_amplitude or amplitude_range < 5:
                 bad_channels.append(eeg_channel)
-
-      #  print('Number of bad chanels:', len(bad_channels))
-
-        # Remove bad channels
-        #good_channels = [ch for ch in self.eeg_channels if ch not in bad_channels]
-        #good_channel_indices = [ch.ch_number for ch in good_channels]
-
-        # Remove bad channels from eeg_data
-        #eeg_data = eeg_data[good_channel_indices]
-        #print(len(eeg_data))
 
         # rereference EEG
         if self.reference == 'mean':
@@ -408,8 +411,7 @@ class IXRDashboard(Thread):
 
         # eeg processing
         avg_bands = [0, 0, 0, 0, 0]
-        frontal_theta = 1
-        parietal_alpha = 1
+        inverse_workload_idx = 0
         engagement_idx = 0
 
         for graph_number, eeg_channel in enumerate([ch for ch in self.eeg_channels if ch.display]):
@@ -431,7 +433,7 @@ class IXRDashboard(Thread):
             if len(eeg_data_pm_sliced) < self.psd_size:
                 continue  # First time _update() runs there is not enough data yet to compute psd
 
-            if not eeg_channel.reference:
+            if not eeg_channel.reference and not eeg_channel in bad_channels:
                 # compute psd
                 psd_data = DataFilter.get_psd_welch(data=eeg_data_pm_sliced,
                                                     nfft=self.psd_size,
@@ -439,7 +441,7 @@ class IXRDashboard(Thread):
                                                     sampling_rate=self.eeg_sampling_rate,
                                                     window=WindowOperations.BLACKMAN_HARRIS.value)
 
-                lim = min(48, len(psd_data[0]))
+                lim = min(60, len(psd_data[0]))
                 self.psd_curves[graph_number].setData(psd_data[1][0:lim].tolist(), psd_data[0][0:lim].tolist())
                 # compute bands
                 delta = DataFilter.get_band_power(psd_data, 1.0, 4.0)
@@ -454,46 +456,32 @@ class IXRDashboard(Thread):
                 avg_bands[4] = avg_bands[4] + gamma
 
                 # compute selfmade brain metrics
-                if eeg_channel in bad_channels:
-                    continue
-                else:
-                    engagement_idx += (beta / (theta + alpha)) / gamma
-
-                if 'Fp' in eeg_channel.name:
-                    frontal_theta += theta / gamma
-                elif 'TP' in eeg_channel.name:
-                    parietal_alpha += alpha / gamma
+                engagement_idx += (beta / (theta + alpha)) / gamma # divided by gamma to reduce power also during strong muscle activity
+                inverse_workload_idx += (alpha / theta) / gamma
 
         avg_bands = [int(x / len(self.eeg_channels)) for x in avg_bands]  # average bands were just sums
 
-        #frontal_channels = []
-        #parietal_channels = []
-
-        #for a in good_channels:
-            #channels = eeg_channel.name
-
-            # Check if the channel name indicates a frontal or parietal location
-            #if 'Fp' in channels:
-                #frontal_channels.append(eeg_channel)
-            #elif 'TP' in channels:
-                #parietal_channels.append(eeg_channel)
-
         if len(bad_channels)!=4:
             engagement_idx = engagement_idx / (4-len(bad_channels))
+            inverse_workload_idx = inverse_workload_idx / (4-len(bad_channels))
+
+            # only use valid scores to scale and calibrate
+            self.engagement_calib.append(engagement_idx)
+            self.inverse_workload_calib.append(inverse_workload_idx)
         else:
             engagement_idx = 0
+            inverse_workload_idx = 0
         
-        print(engagement_idx)
-        parietal_alpha = parietal_alpha / 2
-        frontal_theta = frontal_theta / 2
-
-        # engagement
-        self.engagement_calib.append(engagement_idx)
+        # limit lengths of history and calib
         if len(self.engagement_calib) > self.calib_length:
             del self.engagement_calib[0]
-
         if len(self.engagement_hist) > self.hist_length:
             del self.engagement_hist[0]
+
+        if len(self.inverse_workload_calib) > self.calib_length:
+            del self.inverse_workload_calib[0]
+        if len(self.inverse_workload_hist) > self.hist_length:
+            del self.inverse_workload_hist[0]
 
         # scale
         engagement_z = (engagement_idx - np.mean(self.engagement_calib)) / np.std(self.engagement_calib)
@@ -501,6 +489,12 @@ class IXRDashboard(Thread):
         engagement_z += self.brain_center
         engagement_z = np.clip(engagement_z, 0.05, 1)
         self.engagement_hist.append(engagement_z)
+
+        inverse_workload_z = (inverse_workload_idx - np.mean(self.inverse_workload_calib)) / np.std(self.inverse_workload_calib)
+        inverse_workload_z /= 2 * self.brain_scale
+        inverse_workload_z += self.brain_center
+        inverse_workload_z = np.clip(inverse_workload_z, 0.05, 1)
+        self.inverse_workload_hist.append(inverse_workload_z)
 
         # weighted mean
         engagement_weighted_mean = 0
@@ -511,13 +505,27 @@ class IXRDashboard(Thread):
 
         engagement_weighted_mean = engagement_weighted_mean / sumweight
 
+        inverse_workload_weighted_mean = 0
+        sumweight = 0
+        
+        #print(self.inverse_workload_hist)
+        for count, hist_val in enumerate(self.inverse_workload_hist):
+            inverse_workload_weighted_mean += hist_val * count
+            sumweight += count
+
+        inverse_workload_weighted_mean = inverse_workload_weighted_mean / sumweight
+
         self.engagement = engagement_weighted_mean
-        self.power_metrics = np.float32(self.engagement + (1 - head_movement) * self.head_impact)
+        self.inverse_workload = inverse_workload_weighted_mean
+        #self.power_metrics = [np.float32(self.engagement + (1 - head_movement) * self.head_impact), np.float32(self.inverse_workload + (1 - head_movement) * self.head_impact)]
+        self.power_metrics = [np.float32(self.engagement + (1 - head_movement) * self.head_impact)]
+        #print(self.power_metrics)
 
         # plot bars
         self.band_bar.setOpts(height=avg_bands)
         self.power_bar.setOpts(height=self.power_metrics)
 
-        self.outlet_transmit.push_sample([self.power_metrics])
+        #print(self.power_metrics[0])
+        self.outlet_transmit.push_sample([self.power_metrics[0]])
 
         self.app.processEvents()
