@@ -1,7 +1,7 @@
 brainflow==5.1.0
 pyqtgraph==0.12.4
 PyQt5==5.15.7
-scipy==1.8.1
+scipy==1.10.0
 pylsl==1.16.0
 scikit_learn==1.1.1
 pandas==1.4.3
