@@ -8,7 +8,7 @@ from brainflow import (BoardShim, BrainFlowError, BrainFlowExitCodes,
                        BrainFlowPresets, DataFilter, DetrendOperations,
                        FilterTypes, WindowOperations)
 from pylsl import StreamInfo, StreamOutlet, cf_double64
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from scipy.signal import welch # implement
 from scipy.signal import butter, filtfilt
 
@@ -119,8 +119,8 @@ class IXRDashboard(Thread):
         logging.info(f"'{self.outlet_transmit_spectrum.get_info().name()}' Power Metric stream started.")
 
     def run(self):
-        self.app = QtGui.QApplication([])
-        self.win = pg.GraphicsWindow(title='IXR-flow', size=(1500, 1000))
+        self.app = QtWidgets.QApplication([])
+        self.win = pg.GraphicsLayoutWidget(show=True, title='IXR-flow', size=(1500, 1000));
 
         self._init_pens()
         self._init_timeseries()
@@ -131,7 +131,7 @@ class IXRDashboard(Thread):
         timer = QtCore.QTimer()
         timer.timeout.connect(self._update)
         timer.start(self.update_speed_ms)
-        QtGui.QApplication.instance().exec_()
+        QtWidgets.QApplication.instance().exec_()
 
     def set_parameters(self, calib_length: int = 600, power_length: int = 10, scale: float = 1.5,
                        offset: float = 0.5, head_impact: float = 0.2) -> None:
