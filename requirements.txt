@@ -8,4 +8,4 @@ pandas==2.2.0
 pyxdf==1.16.5
 matplotlib==3.8.2
 pynput==1.7.6
-setuptools==69.0.3
+setuptools==83.0.0
